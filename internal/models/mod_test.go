@@ -157,11 +157,6 @@ func TestValidateEntries(t *testing.T) {
 	}{
 		{name: "valid", mutate: func(e []models.Entry) []models.Entry { return e }},
 		{
-			name:   "too few entries",
-			mutate: func(e []models.Entry) []models.Entry { return e[:1] },
-			want:   models.InvalidEntries,
-		},
-		{
 			name: "two source entries",
 			mutate: func(e []models.Entry) []models.Entry {
 				e[1].Direction = models.SourceDirection
@@ -213,7 +208,9 @@ func TestValidateEntries(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := models.ValidateEntries(tc.mutate(validEntries(t)))
+			entries := tc.mutate(validEntries(t))
+			source, destination := entries[0], entries[1]
+			err := models.ValidateTransactionEntries(source, destination)
 			if tc.want == nil {
 				if err != nil {
 					t.Fatalf("ValidateEntries() error = %v", err)

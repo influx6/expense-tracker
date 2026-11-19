@@ -184,32 +184,21 @@ func (e Entry) Validate() error {
 	return nil
 }
 
-// ValidateEntries checks the double-entry laws: a transaction has exactly two
+// ValidateTransactionEntries checks the double-entry laws: a transaction has exactly two
 // entries, one SOURCE and one DESTINATION, with equal amounts.
-func ValidateEntries(entries []Entry) error {
-	if len(entries) != 2 {
-		return InvalidEntries.withErr(fmt.Errorf("expected 2 entries, got %d", len(entries)))
+func ValidateTransactionEntries(source Entry, destination Entry) error {
+	if sourceValidationErr := source.Validate(); sourceValidationErr != nil {
+		return sourceValidationErr
 	}
-
-	var source, destination *Entry
-	for i := range entries {
-		if err := entries[i].Validate(); err != nil {
-			return err
-		}
-		switch entries[i].Direction {
-		case SourceDirection:
-			if source != nil {
-				return InvalidEntries.withErr(fmt.Errorf("more than one source entry"))
-			}
-			source = &entries[i]
-		case DestinationDirection:
-			if destination != nil {
-				return InvalidEntries.withErr(fmt.Errorf("more than one destination entry"))
-			}
-			destination = &entries[i]
-		}
+	if destValidationErr := source.Validate(); destValidationErr != nil {
+		return destValidationErr
 	}
-
+	if source.Direction != SourceDirection {
+		return InvalidEntries.withErr(fmt.Errorf("source Entry as wrong direction: %q", source.Direction))
+	}
+	if destination.Direction != DestinationDirection {
+		return InvalidEntries.withErr(fmt.Errorf("destination Entry as wrong direction: %q", source.Direction))
+	}
 	if source.TransactionID != destination.TransactionID {
 		return InvalidEntries.withErr(fmt.Errorf("entries belong to different transactions"))
 	}
