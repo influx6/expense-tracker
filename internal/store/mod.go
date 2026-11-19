@@ -15,7 +15,6 @@ import (
 
 var _ error = DbError{}
 
-// DbErrorCode identifies the kind of store failure.
 type DbErrorCode string
 
 const (
@@ -171,7 +170,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		return models.Account{}, err
 	}
 
-	// INSERT OR IGNORE covers a concurrent insert that hits the unique key.
+	// INSERT OR IGNORE covers a concurrent insert that hits both unique key and other violations (learnt something new).
 	if _, err := es.db.Exec(`
 		INSERT OR IGNORE INTO accounts (account_id, account_name, account_type, user_id, currency)
 		VALUES (?, ?, ?, ?, ?)`,

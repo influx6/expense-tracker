@@ -15,7 +15,6 @@ import (
 	"github.com/influx6/expense-tracker/internal/models"
 )
 
-// ErrorCode identifies the kind of parser failure.
 type ErrorCode string
 
 const (
@@ -258,7 +257,6 @@ func parseAmount(raw string, decimalPlaces uint) (decimal.Decimal, error) {
 		return decimal.Decimal{}, ErrorInvalidAmount.withErr(fmt.Errorf("%q", clean))
 	}
 
-	// 15.050 is accepted as 15.05.
 	fraction := strings.TrimRight(match[3], "0")
 	if len(fraction) > int(decimalPlaces) {
 		return decimal.Decimal{}, ErrorTooManyDecimals.withErr(
@@ -281,7 +279,6 @@ func parseAmount(raw string, decimalPlaces uint) (decimal.Decimal, error) {
 		return decimal.Decimal{}, ErrorInvalidAmount.withErr(err)
 	}
 
-	// The sign is not stored. Apply it as x * -1.
 	if match[1] == "-" {
 		d = d.Neg()
 	}
@@ -364,7 +361,6 @@ func WriteInvalidCSV(path string, originalHeader []string, badRows []BadRow) err
 	}
 	defer out.Close()
 
-	// Report write errors instead of silently losing the invalid rows.
 	writer := csv.NewWriter(out)
 	if err := writer.Write(append(originalHeader, "reason")); err != nil {
 		return ErrorWriteInvalidCSV.withErr(err)

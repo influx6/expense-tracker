@@ -34,6 +34,11 @@ gofmt -w .
 - Double entry: each transaction has exactly two entries, one SOURCE and one
   DESTINATION, with equal amounts.
 
+## Code style
+
+- Do not add unnecessary or redundant comments. The code must be clear from reading it.
+- Only comment non-obvious intent, invariants, or workarounds.
+
 ## Tests
 
 - Do not add tests unless explicitly requested.

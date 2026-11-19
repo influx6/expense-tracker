@@ -66,25 +66,22 @@ const (
 	EventTransferOut EventType = "transfer_out"
 )
 
-// AccountNamePattern matches valid account names: lowercase letters and underscores.
 var AccountNamePattern = regexp.MustCompile(`^[a-z_]+$`)
 
 type AccountCategory string
 
 func (t AccountCategory) Validate() error {
+	if string(t) == "" {
+		return InvalidAccount.withErr(fmt.Errorf("missing category"))
+	}
 	if !AccountNamePattern.MatchString(string(t)) {
 		return InvalidAccount.withErr(fmt.Errorf("account_name %q must be lowercase letters and underscores", string(t)))
 	}
 	return nil
 }
 
-// ToAccountCategory is the central constructor for an AccountCategory. It
-// lowercases the name, replaces spaces with underscores, and validates it.
 func ToAccountCategory(raw string) (AccountCategory, error) {
 	name := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(raw)), " ", "_")
-	if name == "" {
-		return "", InvalidAccount.withErr(fmt.Errorf("missing category"))
-	}
 	category := AccountCategory(name)
 	if err := category.Validate(); err != nil {
 		return "", err
