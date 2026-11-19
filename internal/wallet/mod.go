@@ -86,14 +86,14 @@ func NewWallet(ctx context.Context, es *store.ExpenseStore, currency string, use
 	return &Wallet{UserId: userId, Currency: currency, AssetAccount: &assetAccount, ExpenseStore: es}, nil
 }
 
-func (w *Wallet) Apply(ctx context.Context, events []models.TransactionEvent) error {
+func (w *Wallet) Apply(ctx context.Context, events []models.TransactionEvent) (store.InsertCounts, error) {
 	transactions := make([]models.Transaction, 0, len(events))
 	entries := make([]models.Entry, 0, len(events)*2)
 
 	for _, event := range events {
 		change, err := w.transactionEventToWalletRecord(ctx, event)
 		if err != nil {
-			return err
+			return store.InsertCounts{}, err
 		}
 
 		transactions = append(transactions, models.Transaction{
@@ -106,7 +106,7 @@ func (w *Wallet) Apply(ctx context.Context, events []models.TransactionEvent) er
 
 		transactionEntries, tranEntriesErr := change.intoEntries()
 		if tranEntriesErr != nil {
-			return tranEntriesErr
+			return store.InsertCounts{}, tranEntriesErr
 		}
 
 		entries = append(entries, transactionEntries...)
@@ -142,7 +142,7 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 	}
 
 	sourceEntry := models.Entry{
-		EntryID:       uuid.NewV7(),
+		EntryID:       models.UUIDv5(t.TransactionId, string(models.SourceDirection)),
 		TransactionID: t.TransactionId,
 		AccountID:     t.SrcAccount.AccountID,
 		Amount:        t.Amount,
@@ -151,7 +151,7 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 		CreatedAt:     time.Now(),
 	}
 	destinationEntry := models.Entry{
-		EntryID:       uuid.NewV7(),
+		EntryID:       models.UUIDv5(t.TransactionId, string(models.DestinationDirection)),
 		TransactionID: t.TransactionId,
 		AccountID:     t.DestAccount.AccountID,
 		Amount:        t.Amount,
@@ -170,10 +170,15 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 // transactionEventToWalletRecord normalizes every incoming transaction event
 // producing the right set of transaction request that is to be recorded.
 func (w *Wallet) transactionEventToWalletRecord(ctx context.Context, event models.TransactionEvent) (walletChangeRequest, error) {
+	transactionID := event.ID
+	if event.ID == uuid.Nil() {
+		return walletChangeRequest{}, ErrorInvalidEvent.withErr(fmt.Errorf("An invalid cant have null ID"))
+	}
+
 	changeRequest := walletChangeRequest{
 		Desc:          event.Desc,
 		UserId:        w.UserId,
-		TransactionId: uuid.NewV7(),
+		TransactionId: transactionID,
 		OccuredAt:     event.OccuredAt.UTC(),
 		Amount:        event.Amount,
 	}

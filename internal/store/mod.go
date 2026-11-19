@@ -430,93 +430,128 @@ func (es *ExpenseStore) FindAccount(ctx context.Context, category models.Account
 	return row.toAccount(userID)
 }
 
-func (es *ExpenseStore) InsertAllWith(ctx context.Context, transactions []models.Transaction, entries []models.Entry, after func(tx *sqlx.Tx) error) error {
-	return es.withTx(ctx, func(tx *sqlx.Tx) error {
-		if err := insertTransactionsAndEntries(ctx, tx, transactions, entries); err != nil {
+type InsertCounts struct {
+	Transactions int
+	Entries      int
+}
+
+func (es *ExpenseStore) InsertAllWith(ctx context.Context, transactions []models.Transaction, entries []models.Entry, after func(tx *sqlx.Tx) error) (InsertCounts, error) {
+	var counts InsertCounts
+
+	err := es.withTx(ctx, func(tx *sqlx.Tx) error {
+		insertedTransactions, insertedEntries, err := insertTransactionsAndEntries(ctx, tx, transactions, entries)
+		if err != nil {
 			return err
 		}
+		counts = InsertCounts{Transactions: insertedTransactions, Entries: insertedEntries}
+
 		if after != nil {
 			return after(tx)
 		}
 		return nil
 	})
+	if err != nil {
+		return InsertCounts{}, err
+	}
+	return counts, nil
 }
 
-func insertTransactionsAndEntries(ctx context.Context, tx *sqlx.Tx, transactions []models.Transaction, entries []models.Entry) error {
+func insertTransactionsAndEntries(ctx context.Context, tx *sqlx.Tx, transactions []models.Transaction, entries []models.Entry) (int, int, error) {
 	if len(entries) != 2*len(transactions) {
-		return ErrorEntryCountMismatch.withErr(fmt.Errorf(
+		return 0, 0, ErrorEntryCountMismatch.withErr(fmt.Errorf(
 			"%d transactions require %d entries, got %d",
 			len(transactions), 2*len(transactions), len(entries),
 		))
 	}
 
-	if err := insertTransactions(ctx, tx, transactions); err != nil {
-		return err
+	insertedTransactions, err := insertTransactions(ctx, tx, transactions)
+	if err != nil {
+		return 0, 0, err
 	}
-	return insertEntries(ctx, tx, entries)
+	insertedEntries, err := insertEntries(ctx, tx, entries)
+	if err != nil {
+		return 0, 0, err
+	}
+	return insertedTransactions, insertedEntries, nil
 }
 
-func insertTransactions(ctx context.Context, tx *sqlx.Tx, transactions []models.Transaction) error {
+func insertTransactions(ctx context.Context, tx *sqlx.Tx, transactions []models.Transaction) (int, error) {
 	stmt, err := tx.PreparexContext(ctx, `
 		INSERT INTO transactions (transaction_id, user_id, description, occured_at)
-		VALUES (?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT (transaction_id) DO NOTHING`)
 	if err != nil {
-		return ErrorInsert.withErr(err)
+		return 0, ErrorInsert.withErr(err)
 	}
 	defer stmt.Close()
 
+	inserted := 0
 	for _, t := range transactions {
 		if err := t.Validate(); err != nil {
-			return err
+			return 0, err
 		}
-		if _, err := stmt.Exec(
+		result, err := stmt.Exec(
 			t.TransactionID.String(),
 			t.UserID.String(),
 			t.Description,
 			t.OccuredAt.UTC().Format(time.RFC3339),
-		); err != nil {
-			return ErrorInsert.withErr(err)
+		)
+		if err != nil {
+			return 0, ErrorInsert.withErr(err)
 		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return 0, ErrorInsert.withErr(err)
+		}
+		inserted += int(affected)
 	}
-	return nil
+	return inserted, nil
 }
 
-func insertEntries(ctx context.Context, tx *sqlx.Tx, entries []models.Entry) error {
+func insertEntries(ctx context.Context, tx *sqlx.Tx, entries []models.Entry) (int, error) {
 	stmt, err := tx.PreparexContext(ctx, `
 		INSERT INTO entries (entry_id, amount, transaction_id, account_id, direction)
-		VALUES (?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (entry_id) DO NOTHING`)
 	if err != nil {
-		return ErrorInsert.withErr(err)
+		return 0, ErrorInsert.withErr(err)
 	}
 	defer stmt.Close()
 
+	inserted := 0
 	for _, e := range entries {
 		if err := e.Validate(); err != nil {
-			return err
+			return 0, err
 		}
 
 		var accountCurrency string
 		if err := tx.GetContext(ctx, &accountCurrency, `SELECT currency FROM accounts WHERE account_id = ?`, e.AccountID.String()); err != nil {
-			return ErrorInsert.withErr(err)
+			return 0, ErrorInsert.withErr(err)
 		}
 		if accountCurrency != e.Currency {
-			return ErrorCurrencyMismatch.withErr(fmt.Errorf(
+			return 0, ErrorCurrencyMismatch.withErr(fmt.Errorf(
 				"entry %s currency %q does not match account %s currency %q",
 				e.EntryID, e.Currency, e.AccountID, accountCurrency,
 			))
 		}
 
-		if _, err := stmt.Exec(
+		result, err := stmt.Exec(
 			e.EntryID.String(),
 			e.Amount.String(),
 			e.TransactionID.String(),
 			e.AccountID.String(),
 			string(e.Direction),
-		); err != nil {
-			return ErrorInsert.withErr(err)
+		)
+		if err != nil {
+			return 0, ErrorInsert.withErr(err)
 		}
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return 0, ErrorInsert.withErr(err)
+		}
+		inserted += int(affected)
 	}
-	return nil
+	return inserted, nil
 }
 
 func (es *ExpenseStore) withTx(ctx context.Context, fn func(*sqlx.Tx) error) error {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/influx6/expense-tracker/internal/models"
 	"github.com/influx6/expense-tracker/internal/parser"
@@ -743,4 +744,98 @@ func TestParseMapReservedCategories(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseCSVFileIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	rows := [][]string{
+		{"2026-01-02", "10.50", "coffee", "food", "expense"},
+		{"2026-01-03", "100.00", "salary", "income", "income"},
+		{"2026-01-04", "7.25", "loan", "bank", "transfer_in"},
+	}
+	path, err := writeCSVFile(dir, "idempotent.csv", canonicalHeader(), rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	first, err := parser.ParseCSVFile(path, "", 2, reservedCategories)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := parser.ParseCSVFile(path, "", 2, reservedCategories)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(first.ValidEvents) != len(rows) || len(second.ValidEvents) != len(rows) {
+		t.Fatalf("events = %d and %d, want %d", len(first.ValidEvents), len(second.ValidEvents), len(rows))
+	}
+	for i := range first.ValidEvents {
+		left, right := first.ValidEvents[i], second.ValidEvents[i]
+		if left.ID == uuid.Nil() {
+			t.Errorf("event %d has no id", i)
+		}
+		if left.ID != right.ID {
+			t.Errorf("event %d id = %v, want %v", i, left.ID, right.ID)
+		}
+		if !left.OccuredAt.Equal(right.OccuredAt) ||
+			left.Amount.Cmp(right.Amount) != 0 ||
+			left.Desc != right.Desc ||
+			left.Category != right.Category ||
+			left.Type != right.Type {
+			t.Errorf("event %d differs: %+v vs %+v", i, left, right)
+		}
+	}
+}
+
+func TestEventIDStable(t *testing.T) {
+	t.Run("description does not change the id", func(t *testing.T) {
+		fields := validFields()
+		first, err := parser.ParseMap(fields, 2, reservedCategories)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		fields["desc"] = "a completely different description"
+		second, err := parser.ParseMap(fields, 2, reservedCategories)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if first.ID != second.ID {
+			t.Errorf("id changed with description: %v != %v", first.ID, second.ID)
+		}
+	})
+
+	t.Run("formatting and column order do not change the id", func(t *testing.T) {
+		dir := t.TempDir()
+		firstPath, err := writeCSVFile(dir, "first.csv", canonicalHeader(), [][]string{
+			{"2026-01-02", "10.50", "coffee", "food", "expense"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		secondPath, err := writeCSVFile(dir, "second.csv", []string{"type", "category", "desc", "amount", "when"}, [][]string{
+			{"expense", "food", "coffee", " 10.50 ", "2026-01-02T00:00:00Z"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		first, err := parser.ParseCSVFile(firstPath, "", 2, reservedCategories)
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := parser.ParseCSVFile(secondPath, "", 2, reservedCategories)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(first.ValidEvents) != 1 || len(second.ValidEvents) != 1 {
+			t.Fatalf("events = %d and %d, want 1", len(first.ValidEvents), len(second.ValidEvents))
+		}
+		if first.ValidEvents[0].ID != second.ValidEvents[0].ID {
+			t.Errorf("id changed with formatting: %v != %v", first.ValidEvents[0].ID, second.ValidEvents[0].ID)
+		}
+	})
 }

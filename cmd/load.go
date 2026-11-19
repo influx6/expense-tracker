@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -43,15 +44,26 @@ var loadCmd = &cobra.Command{
 			return err
 		}
 
-		if err := expenseWallet.Apply(ctx, result.ValidEvents); err != nil {
+		applyResult, err := expenseWallet.Apply(ctx, result.ValidEvents)
+		if err != nil {
 			return err
 		}
 
 		out := cmd.OutOrStdout()
-		fmt.Fprintf(out, "loaded: %d\n", len(result.ValidEvents))
-		fmt.Fprintf(out, "skipped: %d\n", len(result.BadRows))
+		fmt.Fprintf(out, "parsed: %d\n", len(result.ValidEvents))
+		fmt.Fprintf(out, "loaded: %d\n", applyResult.Transactions)
+		fmt.Fprintf(out, "rejected: %d\n", len(result.BadRows))
+
 		if len(result.BadRows) > 0 {
 			fmt.Fprintf(out, "invalid rows written to: %s\n", invalid)
+
+			limit := min(5, len(result.BadRows))
+			for i, badRow := range result.BadRows[:limit] {
+				fmt.Fprintf(out, "  %d. %s: %s\n", i+1, strings.Join(badRow.RawFields, ", "), badRow.Reason)
+			}
+			if remaining := len(result.BadRows) - limit; remaining > 0 {
+				fmt.Fprintf(out, "  ... and %d more\n", remaining)
+			}
 		}
 		return nil
 	},

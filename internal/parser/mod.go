@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"uuid"
 
 	"github.com/govalues/decimal"
 	"github.com/influx6/expense-tracker/internal/models"
@@ -101,6 +102,8 @@ type BatchResult struct {
 
 // ParseMap validates a single record passed as a map[string]string (e.g. from `cli record` flags).
 // Expected keys: "when", "amount", "desc", "category", "type".
+var eventNamespace = uuid.MustParse("018f2a3b-4c5d-7e6f-8a9b-0c1d2e3f4a5b")
+
 func ParseMap(fields map[string]string, currencyDecimalPlaces uint, reservedCategories []string) (models.TransactionEvent, error) {
 	return validateAndBuildEvent(
 		fields["when"],
@@ -211,6 +214,14 @@ func validateAndBuildEvent(rawWhen, rawAmount, rawDesc, rawCategory, rawType str
 	if err != nil {
 		return ev, err
 	}
+
+	eventKey := strings.Join([]string{
+		when.UTC().Format(time.RFC3339),
+		amount.Rescale(int(currencyDecimalPlaces)).String(),
+		string(category),
+		string(evType),
+	}, "|")
+	ev.ID = models.UUIDv5(eventNamespace, eventKey)
 
 	ev.OccuredAt = when
 	ev.Amount = amount

@@ -245,7 +245,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 
 		afterCalled := false
-		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
+		_, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
 			afterCalled = true
 			var count int
 			if err := tx.Get(&count, `SELECT COUNT(*) FROM entries`); err != nil {
@@ -275,15 +275,15 @@ func TestInsertAllWith(t *testing.T) {
 		asset, expense := testAccounts(t, store, userID)
 		first := testTransaction(userID)
 		second := testTransaction(userID)
-		second.TransactionID = first.TransactionID
+		second.OccuredAt = time.Time{}
 		entries := append(
 			testEntryPair(t, first.TransactionID, asset.AccountID, expense.AccountID),
 			testEntryPair(t, second.TransactionID, asset.AccountID, expense.AccountID)...,
 		)
 
-		err := store.InsertAllWith(t.Context(), []models.Transaction{first, second}, entries, nil)
-		if !errors.Is(err, ErrorInsert) {
-			t.Fatalf("error = %v, want ErrorInsert", err)
+		_, err := store.InsertAllWith(t.Context(), []models.Transaction{first, second}, entries, nil)
+		if !errors.Is(err, models.InvalidTransaction) {
+			t.Fatalf("error = %v, want models.InvalidTransaction", err)
 		}
 		if got := countRows(t, store, "transactions"); got != 0 {
 			t.Errorf("transactions = %d, want 0", got)
@@ -307,7 +307,7 @@ func TestInsertAllWith(t *testing.T) {
 				store, userID := newTestStore(t)
 				txn := testTransaction(userID)
 
-				err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, tc.entries, nil)
+				_, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, tc.entries, nil)
 				if !errors.Is(err, ErrorEntryCountMismatch) {
 					t.Fatalf("error = %v, want ErrorEntryCountMismatch", err)
 				}
@@ -325,7 +325,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 		entries[0].Currency = "USD"
 
-		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil)
+		_, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil)
 		if !errors.Is(err, ErrorCurrencyMismatch) {
 			t.Fatalf("error = %v, want ErrorCurrencyMismatch", err)
 		}
@@ -344,7 +344,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 		entries[1].Direction = models.SourceDirection
 
-		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil)
+		_, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil)
 		if !errors.Is(err, ErrorInsert) {
 			t.Fatalf("error = %v, want ErrorInsert", err)
 		}
@@ -363,7 +363,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 		afterErr := errors.New("balance check failed")
 
-		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
+		_, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
 			return afterErr
 		})
 		if !errors.Is(err, afterErr) {
@@ -396,7 +396,7 @@ func TestEntryIterators(t *testing.T) {
 	asset, expense := testAccounts(t, store, userID)
 	txn := testTransaction(userID)
 	entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
-	if err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -446,7 +446,7 @@ func TestZeroSum(t *testing.T) {
 		asset, expense := testAccounts(t, store, userID)
 		txn := testTransaction(userID)
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
-		if err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
+		if _, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -471,7 +471,7 @@ func TestZeroSum(t *testing.T) {
 		}
 		entries[1].Amount = amount
 
-		if err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
+		if _, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
 			t.Fatal(err)
 		}
 
@@ -519,5 +519,32 @@ func TestAllAccounts(t *testing.T) {
 	}
 	if other != 0 {
 		t.Errorf("USD accounts = %d, want 0", other)
+	}
+}
+
+func TestInsertAllWithIdempotent(t *testing.T) {
+	store, userID := newTestStore(t)
+	asset, expense := testAccounts(t, store, userID)
+	txn := testTransaction(userID)
+	entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, store, "transactions"); got != 1 {
+		t.Errorf("transactions = %d, want 1", got)
+	}
+	if got := countRows(t, store, "entries"); got != 2 {
+		t.Errorf("entries = %d, want 2", got)
+	}
+
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := countRows(t, store, "transactions"); got != 1 {
+		t.Errorf("transactions = %d after reprocess, want 1", got)
+	}
+	if got := countRows(t, store, "entries"); got != 2 {
+		t.Errorf("entries = %d after reprocess, want 2", got)
 	}
 }

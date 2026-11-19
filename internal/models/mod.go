@@ -91,6 +91,7 @@ func ToAccountCategory(raw string) (AccountCategory, error) {
 
 // TransactionEvent is the clean domain value object passed into Wallet.Apply.
 type TransactionEvent struct {
+	ID        uuid.UUID
 	OccuredAt time.Time
 	Amount    decimal.Decimal
 	Desc      string

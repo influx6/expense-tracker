@@ -167,6 +167,7 @@ func testEvent(t *testing.T, eventType models.EventType, amount, category string
 		t.Fatal(err)
 	}
 	return models.TransactionEvent{
+		ID:        uuid.NewV7(),
 		OccuredAt: time.Now().UTC(),
 		Amount:    d,
 		Desc:      "test",
@@ -185,7 +186,7 @@ func TestApply(t *testing.T) {
 			testEvent(t, models.EventTransferOut, "10.00", "friend_loan"),
 		}
 
-		if err := w.Apply(t.Context(), events); err != nil {
+		if _, err := w.Apply(t.Context(), events); err != nil {
 			t.Fatalf("Apply: %v", err)
 		}
 
@@ -259,6 +260,7 @@ func TestApply(t *testing.T) {
 			testEvent(t, models.EventIncome, "100.00", "salary"),
 			testEvent(t, models.EventExpense, "20.00", "food"),
 			{
+				ID:        uuid.NewV7(),
 				OccuredAt: time.Now().UTC(),
 				Amount:    amount,
 				Desc:      "bad event",
@@ -267,7 +269,7 @@ func TestApply(t *testing.T) {
 			},
 		}
 
-		err = w.Apply(t.Context(), events)
+		_, err = w.Apply(t.Context(), events)
 		if !errors.Is(err, wallet.ErrorInvalidEvent) {
 			t.Fatalf("error = %v, want wallet.ErrorInvalidEvent", err)
 		}
@@ -307,6 +309,7 @@ func TestApplyAlwaysBalances(t *testing.T) {
 					t.Fatal(err)
 				}
 				events[j] = models.TransactionEvent{
+					ID:        uuid.NewV7(),
 					OccuredAt: time.Now().UTC(),
 					Amount:    amount,
 					Desc:      "generated",
@@ -315,7 +318,7 @@ func TestApplyAlwaysBalances(t *testing.T) {
 				}
 			}
 
-			if err := w.Apply(t.Context(), events); err != nil {
+			if _, err := w.Apply(t.Context(), events); err != nil {
 				t.Fatalf("Apply: %v", err)
 			}
 
@@ -335,5 +338,24 @@ func TestApplyAlwaysBalances(t *testing.T) {
 				t.Errorf("entries = %d, want %d", got, 2*count)
 			}
 		})
+	}
+}
+
+func TestApplyRequiresEventID(t *testing.T) {
+	w, path, _ := newTestWallet(t)
+	event := testEvent(t, models.EventIncome, "10.00", "salary")
+	event.ID = uuid.Nil()
+
+	_, err := w.Apply(t.Context(), []models.TransactionEvent{event})
+	if !errors.Is(err, wallet.ErrorInvalidEvent) {
+		t.Fatalf("error = %v, want wallet.ErrorInvalidEvent", err)
+	}
+
+	db := openDB(t, path)
+	if got := countRows(t, db, "transactions"); got != 0 {
+		t.Errorf("transactions = %d, want 0", got)
+	}
+	if got := countRows(t, db, "entries"); got != 0 {
+		t.Errorf("entries = %d, want 0", got)
 	}
 }
