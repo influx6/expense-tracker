@@ -157,6 +157,7 @@ expense-tracker rules list
 ```
 
 ```
+liability-peaks
 wallet-summary
 zerosum
 ```
@@ -164,12 +165,20 @@ zerosum
 Run a rule:
 
 ```bash
-expense-tracker rules zerosum
-expense-tracker rules wallet-summary
+expense-tracker rules run zerosum
+expense-tracker rules run wallet-summary
+expense-tracker rules run liability-peaks
 ```
 
 - `zerosum` verifies that all account balances sum to zero.
 - `wallet-summary` prints the same report as `summarize`.
+- `liability-peaks` prints the month with the highest net liability taken on for each year:
+
+  ```
+  Liability peaks:
+    Year   Month      Net Liability Taken On
+    2026   January                4,000.00
+  ```
 
 New rules implement `wallet.ServiceRule[T]` and are registered in `cmd/rules.go`.
 

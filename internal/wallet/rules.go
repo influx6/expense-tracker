@@ -1,9 +1,15 @@
 package wallet
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
-type ServiceRule[T any] interface {
+type PrintOutput interface {
+	Print(out io.Writer)
+}
+
+type ServiceRule[T PrintOutput] interface {
 	Name() string
-
 	Analyse(ctx context.Context, wl *Wallet) (T, error)
 }

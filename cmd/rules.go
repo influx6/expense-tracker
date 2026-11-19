@@ -1,55 +1,44 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/influx6/expense-tracker/internal/humans"
 	"github.com/influx6/expense-tracker/internal/rules"
 	"github.com/influx6/expense-tracker/internal/store"
 	"github.com/influx6/expense-tracker/internal/wallet"
 )
 
-type rule interface {
-	Name() string
-	Analyse(ctx context.Context, wl *wallet.Wallet) (any, error)
-}
-
-type walletSummaryRule struct{ rules.WalletSummaryRule }
-
-func (r walletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
-	return r.WalletSummaryRule.Analyse(ctx, wl)
-}
-
-type liabilityPeakRule struct{ rules.LiabilityPeakRule }
-
-func (r liabilityPeakRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
-	return r.LiabilityPeakRule.Analyse(ctx, wl)
-}
-
-var ruleRunners = []rule{
+var ruleRunners = []wallet.ServiceRule[wallet.PrintOutput]{
 	rules.ZeroSumBalance{},
-	walletSummaryRule{},
-	liabilityPeakRule{},
+	rules.WalletSummaryRule{},
+	rules.LiabilityPeakRule{},
 }
 
 var rulesCmd = &cobra.Command{
-	Use:   "rules [rule-name|list]",
-	Short: "Run a rule or list the available rules",
-	Args:  cobra.MaximumNArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) == 0 || args[0] == "list" {
-			for _, name := range availableRules() {
-				fmt.Fprintln(cmd.OutOrStdout(), name)
-			}
-			return nil
-		}
+	Use:   "rules",
+	Short: "List or run wallet rules",
+}
 
+var rulesListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List the available rules",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		for _, name := range availableRules() {
+			fmt.Fprintln(cmd.OutOrStdout(), name)
+		}
+		return nil
+	},
+}
+
+var rulesRunCmd = &cobra.Command{
+	Use:   "run [rule-name]",
+	Short: "Run a rule",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
 		selected, ok := findRule(name)
 		if !ok {
@@ -78,40 +67,16 @@ var rulesCmd = &cobra.Command{
 		}
 
 		out := cmd.OutOrStdout()
-		switch value := result.(type) {
-		case nil:
+		if result == nil {
 			fmt.Fprintf(out, "%s: ok\n", name)
-		case *rules.WalletSummary:
-			printWalletSummary(cmd, expenseWallet.Currency, value)
-		case *rules.LiabilityPeaks:
-			printLiabilityPeaks(cmd, value)
-		default:
-			fmt.Fprintln(out, value)
+			return nil
 		}
+		result.Print(out)
 		return nil
 	},
 }
 
-func printLiabilityPeaks(cmd *cobra.Command, peaks *rules.LiabilityPeaks) {
-	out := cmd.OutOrStdout()
-
-	if len(peaks.Peaks) == 0 {
-		fmt.Fprintln(out, "Liability peaks: none")
-		return
-	}
-
-	fmt.Fprintln(out, "Liability peaks:")
-	fmt.Fprintf(out, "  %-6s %-10s %20s\n", "Year", "Month", "Net Liability Taken On")
-	for _, peak := range peaks.Peaks {
-		fmt.Fprintf(out, "  %-6d %-10s %20s\n",
-			peak.Year,
-			time.Month(peak.Month).String(),
-			humans.Amount(peak.Amount),
-		)
-	}
-}
-
-func findRule(name string) (rule, bool) {
+func findRule(name string) (wallet.ServiceRule[wallet.PrintOutput], bool) {
 	for _, available := range ruleRunners {
 		if available.Name() == name {
 			return available, true
@@ -131,6 +96,7 @@ func availableRules() []string {
 
 func init() {
 	rootCmd.AddCommand(rulesCmd)
+	rulesCmd.AddCommand(rulesListCmd, rulesRunCmd)
 
-	rulesCmd.Flags().String("db", "expense-tracker.db", "SQLite database path")
+	rulesRunCmd.Flags().String("db", "expense-tracker.db", "SQLite database path")
 }

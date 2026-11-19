@@ -2,12 +2,9 @@ package cmd
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/spf13/cobra"
 
-	"github.com/influx6/expense-tracker/internal/humans"
-	"github.com/influx6/expense-tracker/internal/models"
 	"github.com/influx6/expense-tracker/internal/rules"
 	"github.com/influx6/expense-tracker/internal/store"
 	"github.com/influx6/expense-tracker/internal/wallet"
@@ -56,53 +53,9 @@ var summarizeCmd = &cobra.Command{
 			return err
 		}
 
-		printWalletSummary(cmd, expenseWallet.Currency, summary)
+		summary.Print(cmd.OutOrStdout())
 		return nil
 	},
-}
-
-var summaryTypeOrder = map[models.AccountType]int{
-	models.AssetAccount:     0,
-	models.LiabilityAccount: 1,
-	models.IncomeAccount:    2,
-	models.ExpenseAccount:   3,
-}
-
-func printWalletSummary(cmd *cobra.Command, currency string, summary *rules.WalletSummary) {
-	out := cmd.OutOrStdout()
-
-	sort.Slice(summary.Categories, func(i, j int) bool {
-		left, right := summary.Categories[i].Account, summary.Categories[j].Account
-		if leftRank, rightRank := summaryTypeOrder[left.AccountType], summaryTypeOrder[right.AccountType]; leftRank != rightRank {
-			return leftRank < rightRank
-		}
-		return left.AccountCategory < right.AccountCategory
-	})
-
-	fmt.Fprintf(out, "Currency: %s\n\n", currency)
-
-	fmt.Fprintln(out, "Totals:")
-	fmt.Fprintf(out, "  %-12s %20s %20s %20s\n", "Type", "Debits (RECEIVED)", "Credits (SENT)", "Balance")
-	for _, total := range summary.Totals {
-		fmt.Fprintf(out, "  %-12s %20s %20s %20s\n",
-			humans.AccountType(total.AccountType),
-			humans.Amount(total.Debits),
-			humans.Amount(total.Credits),
-			humans.Amount(total.Balance),
-		)
-	}
-
-	fmt.Fprintln(out, "\nCategories:")
-	fmt.Fprintf(out, "  %-12s %-18s %20s %20s %20s\n", "Type", "Category", "Debits (RECEIVED)", "Credits (SENT)", "Balance")
-	for _, category := range summary.Categories {
-		fmt.Fprintf(out, "  %-12s %-18s %20s %20s %20s\n",
-			humans.AccountType(category.Account.AccountType),
-			humans.Category(category.Account.AccountCategory),
-			humans.Amount(category.Debits),
-			humans.Amount(category.Credits),
-			humans.Amount(category.Balance),
-		)
-	}
 }
 
 func init() {

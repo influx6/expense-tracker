@@ -10,7 +10,7 @@ import (
 
 var ErrUnbalanced = errors.New("zerosum: accounts do not sum to zero")
 
-var _ wallet.ServiceRule[any] = ZeroSumBalance{}
+var _ wallet.ServiceRule[wallet.PrintOutput] = ZeroSumBalance{}
 
 // ZeroSumBalance enforces the desired effects that
 // an user when summed across all it's accounts
@@ -23,7 +23,7 @@ func (t ZeroSumBalance) Name() string {
 	return "zerosum"
 }
 
-func (t ZeroSumBalance) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
+func (t ZeroSumBalance) Analyse(ctx context.Context, wl *wallet.Wallet) (wallet.PrintOutput, error) {
 	total, err := wl.ExpenseStore.ZeroSum(ctx, wl.UserId, wl.Currency)
 	if err != nil {
 		return nil, err
