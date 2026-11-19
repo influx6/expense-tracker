@@ -18,19 +18,22 @@ var _ error = DbError{}
 type DbErrorCode string
 
 const (
-	CodeSchemaInit      DbErrorCode = "DB_INIT_FAILED"
-	CodeInsert          DbErrorCode = "FAILED_INSERT"
-	CodeQueryFailed     DbErrorCode = "QUERY_FAILED"
-	CodeAccountNotFound DbErrorCode = "ACCOUNT_NOT_FOUND"
-	CodeNotImplemented  DbErrorCode = "NOT_IMPLEMENTED"
+	CodeSchemaInit         DbErrorCode = "DB_INIT_FAILED"
+	CodeInsert             DbErrorCode = "FAILED_INSERT"
+	CodeQueryFailed        DbErrorCode = "QUERY_FAILED"
+	CodeAccountNotFound    DbErrorCode = "ACCOUNT_NOT_FOUND"
+	CodeTransactionFailed  DbErrorCode = "TRANSACTION_FAILED"
+	CodeEntryCountMismatch DbErrorCode = "ENTRY_COUNT_MISMATCH"
+	CodeNotImplemented     DbErrorCode = "NOT_IMPLEMENTED"
 )
 
 var (
-	ErrorSchemaInit      = DbError{Code: CodeSchemaInit, Label: "Failed to initialize schema for database", IsTerminal: true}
-	ErrorInsert          = DbError{Code: CodeInsert, Label: "Failed to insert record into table"}
-	ErrorQueryFailed     = DbError{Code: CodeQueryFailed, Label: "Failed to query database", IsTerminal: true}
-	ErrorAccountNotFound = DbError{Code: CodeAccountNotFound, Label: "Account not found"}
-	ErrorNotImplemented  = DbError{Code: CodeNotImplemented, Label: "not implemented", IsTerminal: true}
+	ErrorSchemaInit         = DbError{Code: CodeSchemaInit, Label: "Failed to initialize schema for database", IsTerminal: true}
+	ErrorInsert             = DbError{Code: CodeInsert, Label: "Failed to insert record into table"}
+	ErrorQueryFailed        = DbError{Code: CodeQueryFailed, Label: "Failed to query database", IsTerminal: true}
+	ErrorAccountNotFound    = DbError{Code: CodeAccountNotFound, Label: "Account not found"}
+	ErrorTransactionFailed  = DbError{Code: CodeTransactionFailed, Label: "Transaction failed", IsTerminal: true}
+	ErrorEntryCountMismatch = DbError{Code: CodeEntryCountMismatch, Label: "Entry count must be twice the transaction count"}
 )
 
 type DbError struct {
@@ -233,4 +236,98 @@ func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType
 		Currency:        row.Currency,
 		CreatedAt:       createdAt,
 	}, nil
+}
+
+func (es *ExpenseStore) InsertAllWith(transactions []models.Transaction, entries []models.Entry, after func(tx *sqlx.Tx) error) error {
+	return es.withTx(func(tx *sqlx.Tx) error {
+		if err := insertTransactionsAndEntries(tx, transactions, entries); err != nil {
+			return err
+		}
+		if after != nil {
+			return after(tx)
+		}
+		return nil
+	})
+}
+
+func insertTransactionsAndEntries(tx *sqlx.Tx, transactions []models.Transaction, entries []models.Entry) error {
+	if len(entries) != 2*len(transactions) {
+		return ErrorEntryCountMismatch.withErr(fmt.Errorf(
+			"%d transactions require %d entries, got %d",
+			len(transactions), 2*len(transactions), len(entries),
+		))
+	}
+
+	if err := insertTransactions(tx, transactions); err != nil {
+		return err
+	}
+	return insertEntries(tx, entries)
+}
+
+func insertTransactions(tx *sqlx.Tx, transactions []models.Transaction) error {
+	stmt, err := tx.Preparex(`
+		INSERT INTO transactions (transaction_id, user_id, description, occured_at)
+		VALUES (?, ?, ?, ?)`)
+	if err != nil {
+		return ErrorInsert.withErr(err)
+	}
+	defer stmt.Close()
+
+	for _, t := range transactions {
+		if err := t.Validate(); err != nil {
+			return err
+		}
+		if _, err := stmt.Exec(
+			t.TransactionID.String(),
+			t.UserID.String(),
+			t.Description,
+			t.OccuredAt.UTC().Format(time.RFC3339),
+		); err != nil {
+			return ErrorInsert.withErr(err)
+		}
+	}
+	return nil
+}
+
+func insertEntries(tx *sqlx.Tx, entries []models.Entry) error {
+	stmt, err := tx.Preparex(`
+		INSERT INTO entries (entry_id, amount, transaction_id, account_id, direction)
+		VALUES (?, ?, ?, ?, ?)`)
+	if err != nil {
+		return ErrorInsert.withErr(err)
+	}
+	defer stmt.Close()
+
+	for _, e := range entries {
+		if err := e.Validate(); err != nil {
+			return err
+		}
+		if _, err := stmt.Exec(
+			e.EntryID.String(),
+			e.Amount.String(),
+			e.TransactionID.String(),
+			e.AccountID.String(),
+			string(e.Direction),
+		); err != nil {
+			return ErrorInsert.withErr(err)
+		}
+	}
+	return nil
+}
+
+func (es *ExpenseStore) withTx(fn func(*sqlx.Tx) error) error {
+	tx, err := es.db.Beginx()
+	if err != nil {
+		return ErrorTransactionFailed.withErr(err)
+	}
+
+	if err := fn(tx); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return ErrorTransactionFailed.withErr(err)
+	}
+	return nil
 }

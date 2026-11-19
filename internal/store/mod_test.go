@@ -5,7 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
+
+	"github.com/govalues/decimal"
+	"github.com/jmoiron/sqlx"
 
 	"github.com/influx6/expense-tracker/internal/models"
 )
@@ -168,6 +172,186 @@ func TestStoreAccountErrors(t *testing.T) {
 		}
 		if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			t.Errorf("error = %v, want a UNIQUE constraint failure", err)
+		}
+	})
+}
+
+func countRows(t *testing.T, store *ExpenseStore, table string) int {
+	t.Helper()
+
+	var count int
+	if err := store.db.Get(&count, "SELECT COUNT(*) FROM "+table); err != nil {
+		t.Fatal(err)
+	}
+	return count
+}
+
+func testAccounts(t *testing.T, store *ExpenseStore, userID uuid.UUID) (models.Account, models.Account) {
+	t.Helper()
+
+	asset, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return asset, expense
+}
+
+func testTransaction(userID uuid.UUID) models.Transaction {
+	return models.Transaction{
+		TransactionID: uuid.NewV7(),
+		UserID:        userID,
+		Description:   "coffee",
+		OccuredAt:     time.Now().UTC(),
+	}
+}
+
+func testEntryPair(t *testing.T, transactionID, assetID, expenseID uuid.UUID) []models.Entry {
+	t.Helper()
+
+	amount, err := decimal.Parse("10.00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return []models.Entry{
+		{
+			EntryID:       uuid.NewV7(),
+			TransactionID: transactionID,
+			AccountID:     assetID,
+			Amount:        amount,
+			Direction:     models.SourceDirection,
+		},
+		{
+			EntryID:       uuid.NewV7(),
+			TransactionID: transactionID,
+			AccountID:     expenseID,
+			Amount:        amount,
+			Direction:     models.DestinationDirection,
+		},
+	}
+}
+
+func TestInsertAllWith(t *testing.T) {
+	t.Run("inserts transactions and entries", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		txn := testTransaction(userID)
+		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+
+		afterCalled := false
+		err := store.InsertAllWith([]models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
+			afterCalled = true
+			var count int
+			if err := tx.Get(&count, `SELECT COUNT(*) FROM entries`); err != nil {
+				return err
+			}
+			if count != 2 {
+				t.Errorf("after saw %d entries, want 2", count)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("InsertAllWith: %v", err)
+		}
+		if !afterCalled {
+			t.Error("after hook was not called")
+		}
+		if got := countRows(t, store, "transactions"); got != 1 {
+			t.Errorf("transactions = %d, want 1", got)
+		}
+		if got := countRows(t, store, "entries"); got != 2 {
+			t.Errorf("entries = %d, want 2", got)
+		}
+	})
+
+	t.Run("rolls back on transaction failure", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		first := testTransaction(userID)
+		second := testTransaction(userID)
+		second.TransactionID = first.TransactionID
+		entries := append(
+			testEntryPair(t, first.TransactionID, asset.AccountID, expense.AccountID),
+			testEntryPair(t, second.TransactionID, asset.AccountID, expense.AccountID)...,
+		)
+
+		err := store.InsertAllWith([]models.Transaction{first, second}, entries, nil)
+		if !errors.Is(err, ErrorInsert) {
+			t.Fatalf("error = %v, want ErrorInsert", err)
+		}
+		if got := countRows(t, store, "transactions"); got != 0 {
+			t.Errorf("transactions = %d, want 0", got)
+		}
+		if got := countRows(t, store, "entries"); got != 0 {
+			t.Errorf("entries = %d, want 0", got)
+		}
+	})
+
+	t.Run("rejects missing entries", func(t *testing.T) {
+		cases := []struct {
+			name    string
+			entries []models.Entry
+		}{
+			{name: "nil", entries: nil},
+			{name: "empty", entries: []models.Entry{}},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.name, func(t *testing.T) {
+				store, userID := newTestStore(t)
+				txn := testTransaction(userID)
+
+				err := store.InsertAllWith([]models.Transaction{txn}, tc.entries, nil)
+				if !errors.Is(err, ErrorEntryCountMismatch) {
+					t.Fatalf("error = %v, want ErrorEntryCountMismatch", err)
+				}
+				if got := countRows(t, store, "transactions"); got != 0 {
+					t.Errorf("transactions = %d, want 0", got)
+				}
+			})
+		}
+	})
+
+	t.Run("rolls back both when entries fail", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		txn := testTransaction(userID)
+		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+		entries[1].Direction = models.SourceDirection
+
+		err := store.InsertAllWith([]models.Transaction{txn}, entries, nil)
+		if !errors.Is(err, ErrorInsert) {
+			t.Fatalf("error = %v, want ErrorInsert", err)
+		}
+		if got := countRows(t, store, "transactions"); got != 0 {
+			t.Errorf("transactions = %d, want 0", got)
+		}
+		if got := countRows(t, store, "entries"); got != 0 {
+			t.Errorf("entries = %d, want 0", got)
+		}
+	})
+
+	t.Run("rolls back when after fails", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		txn := testTransaction(userID)
+		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+		afterErr := errors.New("balance check failed")
+
+		err := store.InsertAllWith([]models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
+			return afterErr
+		})
+		if !errors.Is(err, afterErr) {
+			t.Fatalf("error = %v, want %v", err, afterErr)
+		}
+		if got := countRows(t, store, "transactions"); got != 0 {
+			t.Errorf("transactions = %d, want 0", got)
+		}
+		if got := countRows(t, store, "entries"); got != 0 {
+			t.Errorf("entries = %d, want 0", got)
 		}
 	})
 }
