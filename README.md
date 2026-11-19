@@ -3,8 +3,13 @@
 <!--toc:start-->
 
 - [Personal Finance Tracker](#personal-finance-tracker)
-  - [Assumptions](#assumptions)
-  - [Tracker Stories and Laws](#tracker-stories-and-laws)
+  - [AI Disclaimer](#ai-disclaimer)
+  - [Important Decisions](#important-decisions)
+  - [CLI Commands](#cli-commands)
+    - [Load](#load)
+    - [Summarize](#summarize)
+    - [Rules](#rules)
+  - [Specifications: Assumptions, Laws, Invariants](#specifications-assumptions-laws-invariants)
     - [Core Assumptions and Invariants](#core-assumptions-and-invariants)
     - [[Story]: I want to track my overall income](#story-i-want-to-track-my-overall-income)
       - [Entities, ValueTypes](#entities-valuetypes)
@@ -31,10 +36,6 @@
     - [Model: Account](#model-account)
       - [Properties](#properties-2)
       - [Laws](#laws-2)
-  - [CLI Commands](#cli-commands)
-    - [Load](#load)
-    - [Summarize](#summarize)
-    - [Rules](#rules)
 
 <!--toc:end-->
 
@@ -50,7 +51,7 @@ I used AI where it made sense selectively, such as:
 - Writing tests for established code and edgecases
 - Speeding through guided implementation steps after hand coding
 
-## Important
+## Important Decisions
 
 1. The tests are kept as simple as possible, and I selected to use AI to generate these, its more labour that actual work since the core is the plan first then the code.
 
@@ -60,9 +61,51 @@ I used AI where it made sense selectively, such as:
 
 4. Sqlite is used as our record of storage, just, zero support for decimal without the [Decimal.c](https://www.sqlite.org/floatingpoint.html) extension, which I kept out to keep it basi.
 
-## Assumptions
+## CLI Commands
 
-## Tracker Stories and Laws
+### Load
+
+Loads a giving provided CSV file into the tracker application. Internally we process, process and store the facts into a embedded sqlite database table
+and entirely use that to query and provide relevant expense reports.
+
+### Summarize
+
+Returns a summarized month by month report of existing spending showing total income, expenses, expenses by categories per year, per month
+
+```
+tracker summarize
+```
+
+Get a specific month's tracking summary for a giving year:
+
+```bash
+tracker summarize --year 2026 --month jan|january|01|1
+```
+
+### Rules
+
+Allows executing a specific rule implementation for a all periods or a specific time period (year and month required) to identify a specific
+sets of transactions that match specific criterias.
+
+Rules can be easily added in into [rules][./rules] and registers it with the [rules](./cmd/rules) command:
+cmd/rules.go
+
+```go
+RULES = []Rule {
+    ...,
+    MY_RULE,
+}
+```
+
+Then you can run your new rule:
+
+```bash
+tracker rule MY_RULE
+tracker rule MY_RULE --year 2026
+tracker rule MY_RULE --year 2026 --month jan|january|01|1
+```
+
+## Specifications: Assumptions, Laws, Invariants
 
 ### Core Assumptions and Invariants
 
@@ -291,47 +334,3 @@ The system has a series of Accounts representing the different sets of system of
 - Every account has a specific `account_type` (ASSET, EXPENSE, LIABILITY, INCOME)
 - Every account except the ASSET account is user generated and always from the incoming transaction log being ingested
 - Every accounts `sum(account.entries.destination.amount) - sum(accounts.entries.source.amount)` = [remaining_value] tells us the accounts left over balance.
-
-## CLI Commands
-
-### Load
-
-Loads a giving provided CSV file into the tracker application. Internally we process, process and store the facts into a embedded sqlite database table
-and entirely use that to query and provide relevant expense reports.
-
-### Summarize
-
-Returns a summarized month by month report of existing spending showing total income, expenses, expenses by categories per year, per month
-
-```
-tracker summarize
-```
-
-Get a specific month's tracking summary for a giving year:
-
-```bash
-tracker summarize --year 2026 --month jan|january|01|1
-```
-
-### Rules
-
-Allows executing a specific rule implementation for a all periods or a specific time period (year and month required) to identify a specific
-sets of transactions that match specific criterias.
-
-Rules can be easily added in into [rules][./rules] and registers it with the [rules](./cmd/rules) command:
-cmd/rules.go
-
-```go
-RULES = []Rule {
-    ...,
-    MY_RULE,
-}
-```
-
-Then you can run your new rule:
-
-```bash
-tracker rule MY_RULE
-tracker rule MY_RULE --year 2026
-tracker rule MY_RULE --year 2026 --month jan|january|01|1
-```
