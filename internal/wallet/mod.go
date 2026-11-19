@@ -112,7 +112,7 @@ func (w *Wallet) Apply(events []models.TransactionEvent) error {
 	})
 }
 
-type WalletChangeRequest struct {
+type walletChangeRequest struct {
 	Desc          string
 	UserId        uuid.UUID
 	TransactionId uuid.UUID
@@ -122,7 +122,7 @@ type WalletChangeRequest struct {
 	DestAccount   models.Account
 }
 
-func (t *WalletChangeRequest) intoEntries() ([]models.Entry, error) {
+func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 	sourceEntry := models.Entry{
 		EntryID:       uuid.NewV7(),
 		TransactionID: t.TransactionId,
@@ -149,8 +149,8 @@ func (t *WalletChangeRequest) intoEntries() ([]models.Entry, error) {
 
 // transactionEventToWalletRecord normalizes every incoming transaction event
 // producing the right set of transaction request that is to be recorded.
-func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (WalletChangeRequest, error) {
-	changeRequest := WalletChangeRequest{
+func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (walletChangeRequest, error) {
+	changeRequest := walletChangeRequest{
 		Desc:          event.Desc,
 		UserId:        w.userId,
 		TransactionId: uuid.NewV7(),
@@ -162,7 +162,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 	case models.EventExpense:
 		destAccount, destAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.ExpenseAccount, w.userId)
 		if destAccountErr != nil {
-			return WalletChangeRequest{}, ErrorAccountError.withErr(destAccountErr)
+			return walletChangeRequest{}, ErrorAccountError.withErr(destAccountErr)
 		}
 
 		changeRequest.SrcAccount = *w.assetAccount
@@ -171,7 +171,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 	case models.EventIncome:
 		incomeAccount, incomeAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.IncomeAccount, w.userId)
 		if incomeAccountErr != nil {
-			return WalletChangeRequest{}, ErrorAccountError.withErr(incomeAccountErr)
+			return walletChangeRequest{}, ErrorAccountError.withErr(incomeAccountErr)
 		}
 
 		changeRequest.SrcAccount = incomeAccount
@@ -182,7 +182,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 		// that will need to be settled, but they do increase asset value.
 		liabilityAccount, liabilityAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId)
 		if liabilityAccountErr != nil {
-			return WalletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
+			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
 
 		changeRequest.SrcAccount = liabilityAccount
@@ -192,13 +192,13 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 		// transfers out decreases asset value but also decreases your libability.
 		liabilityAccount, liabilityAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId)
 		if liabilityAccountErr != nil {
-			return WalletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
+			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
 
 		changeRequest.SrcAccount = *w.assetAccount
 		changeRequest.DestAccount = liabilityAccount
 		return changeRequest, nil
 	default:
-		return WalletChangeRequest{}, ErrorInvalidEvent.withErr(fmt.Errorf("%q", event.Type))
+		return walletChangeRequest{}, ErrorInvalidEvent.withErr(fmt.Errorf("%q", event.Type))
 	}
 }
