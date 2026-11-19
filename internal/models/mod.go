@@ -94,7 +94,7 @@ type TransactionEvent struct {
 	OccuredAt time.Time
 	Amount    decimal.Decimal
 	Desc      string
-	Category  AccountCategory // normalized: lowercase + _ only
+	Category  AccountCategory
 	Type      EventType
 }
 
