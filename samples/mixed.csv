@@ -1,0 +1,101 @@
+when,amount,desc,category,type
+2026-05-01,1.00,food entry 1,food,expense
+2026-05-02,14.73,salary entry 2,salary,income
+2026-05-03,28.46,friend entry 3,friend,transfer_in
+2026-05-04,42.19,friend entry 4,friend,transfer_out
+2026-05-01,15.055,too precise,food,expense
+2026-05-05,55.92,rent entry 5,rent,expense
+2026-05-06,69.65,bonus entry 6,bonus,income
+2026-05-07,83.38,family entry 7,family,transfer_in
+2026-05-08,97.11,family entry 8,family,transfer_out
+2026-05-02,oops,broken amount,food,expense
+2026-05-09,110.84,transport entry 9,transport,expense
+2026-05-10,124.57,bank entry 10,bank,income
+2026-05-11,138.30,bank entry 11,bank,transfer_in
+2026-05-12,152.03,bank entry 12,bank,transfer_out
+nope,5.00,bad time,food,expense
+2026-05-13,165.76,utilities entry 13,utilities,expense
+2026-05-14,179.49,salary entry 14,salary,income
+2026-05-15,193.22,friend entry 15,friend,transfer_in
+2026-05-16,206.95,friend entry 16,friend,transfer_out
+2026-05-04,-5.00,negative amount,food,expense
+2026-05-17,220.68,leisure entry 17,leisure,expense
+2026-05-18,234.41,bonus entry 18,bonus,income
+2026-05-19,248.14,family entry 19,family,transfer_in
+2026-05-20,261.87,family entry 20,family,transfer_out
+2026-05-05,0.00,zero amount,food,expense
+2026-05-21,275.60,shopping entry 21,shopping,expense
+2026-05-22,289.33,bank entry 22,bank,income
+2026-05-23,303.06,bank entry 23,bank,transfer_in
+2026-05-24,316.79,bank entry 24,bank,transfer_out
+2026-05-06,1e3,exponent amount,food,expense
+2026-05-25,330.52,health entry 25,health,expense
+2026-05-26,344.25,salary entry 26,salary,income
+2026-05-27,357.98,friend entry 27,friend,transfer_in
+2026-05-28,371.71,friend entry 28,friend,transfer_out
+2026-05-07,5.00,bad type,food,credit
+2026-06-01,385.44,education entry 29,education,expense
+2026-06-02,399.17,bonus entry 30,bonus,income
+2026-06-03,412.90,family entry 31,family,transfer_in
+2026-06-04,426.63,family entry 32,family,transfer_out
+2026-05-08,5.00,reserved category,wallet,expense
+2026-06-05,440.36,food entry 33,food,expense
+2026-06-06,454.09,bank entry 34,bank,income
+2026-06-07,467.82,bank entry 35,bank,transfer_in
+2026-06-08,481.55,bank entry 36,bank,transfer_out
+2026-05-09,5.00,bad category,food2,expense
+2026-06-09,495.28,rent entry 37,rent,expense
+2026-06-10,509.01,salary entry 38,salary,income
+2026-06-11,522.74,friend entry 39,friend,transfer_in
+2026-06-12,536.47,friend entry 40,friend,transfer_out
+2026-05-10,5.00,short row,food
+2026-06-13,550.20,transport entry 41,transport,expense
+2026-06-14,563.93,bonus entry 42,bonus,income
+2026-06-15,577.66,family entry 43,family,transfer_in
+2026-06-16,591.39,family entry 44,family,transfer_out
+2026-05-11,5.00,long row,food,expense,extra
+2026-06-17,605.12,utilities entry 45,utilities,expense
+2026-06-18,618.85,bank entry 46,bank,income
+2026-06-19,632.58,bank entry 47,bank,transfer_in
+2026-06-20,646.31,bank entry 48,bank,transfer_out
+,5.00,empty when,food,expense
+2026-06-21,660.04,leisure entry 49,leisure,expense
+2026-06-22,673.77,salary entry 50,salary,income
+2026-06-23,687.50,friend entry 51,friend,transfer_in
+2026-06-24,701.23,friend entry 52,friend,transfer_out
+2026-05-13,,empty amount,food,expense
+2026-06-25,714.96,shopping entry 53,shopping,expense
+2026-06-26,728.69,bonus entry 54,bonus,income
+2026-06-27,742.42,family entry 55,family,transfer_in
+2026-06-28,756.15,family entry 56,family,transfer_out
+2026-05-14,5.00,empty category,,expense
+2026-07-01,769.88,health entry 57,health,expense
+2026-07-02,783.61,bank entry 58,bank,income
+2026-07-03,797.34,bank entry 59,bank,transfer_in
+2026-07-04,811.07,bank entry 60,bank,transfer_out
+2026-05-15,"1,000.00",comma amount,food,expense
+2026-07-05,824.80,education entry 61,education,expense
+2026-07-06,838.53,salary entry 62,salary,income
+2026-07-07,852.26,friend entry 63,friend,transfer_in
+2026-07-08,865.99,friend entry 64,friend,transfer_out
+2026-05-16,5.00,empty type,food,
+2026-07-09,879.72,food entry 65,food,expense
+2026-07-10,893.45,bonus entry 66,bonus,income
+2026-07-11,907.18,family entry 67,family,transfer_in
+2026-07-12,920.91,family entry 68,family,transfer_out
+2026-05-17,5.00,dash category,food-delivery,expense
+2026-07-13,934.64,rent entry 69,rent,expense
+2026-07-14,948.37,bank entry 70,bank,income
+2026-07-15,962.10,bank entry 71,bank,transfer_in
+2026-07-16,975.83,bank entry 72,bank,transfer_out
+2026-05-18,.5,no leading digit,food,expense
+2026-07-17,989.56,transport entry 73,transport,expense
+2026-07-18,1003.29,salary entry 74,salary,income
+2026-07-19,1017.02,friend entry 75,friend,transfer_in
+2026-07-20,1030.75,friend entry 76,friend,transfer_out
+2026-05-19,5.,trailing dot,food,expense
+2026-07-21,1044.48,utilities entry 77,utilities,expense
+2026-07-22,1058.21,bonus entry 78,bonus,income
+2026-07-23,1071.94,family entry 79,family,transfer_in
+2026-07-24,1085.67,family entry 80,family,transfer_out
+2026-05-20,5 000,spaced amount,food,expense

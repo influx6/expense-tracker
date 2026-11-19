@@ -1,0 +1,51 @@
+type,category,when,desc,amount
+expense,rent,2026-01-02,January rent,18000.00
+expense,utilities,2026-01-02,electricity,850.00
+expense,food,2026-01-03,groceries,320.50
+expense,transport,2026-01-03,mtr,45.00
+expense,food,2026-01-04,lunch,88.00
+income,salary,2026-01-05,January salary,25000.00
+expense,leisure,2026-01-05,cinema,120.00
+expense,food,2026-01-06,dinner,260.00
+transfer_in,friend,2026-01-06,borrowed from john,5000.00
+expense,shopping,2026-01-07,shoes,899.00
+expense,health,2026-01-08,clinic,450.00
+expense,food,2026-01-09,groceries,410.75
+income,bonus,2026-01-10,quarterly bonus,3000.00
+expense,transport,2026-01-10,taxi,95.00
+expense,education,2026-01-11,textbook,620.00
+expense,food,2026-01-12,lunch,76.50
+transfer_out,friend,2026-01-13,repay john part,2000.00
+expense,utilities,2026-01-13,internet,299.00
+expense,food,2026-01-14,groceries,385.20
+expense,leisure,2026-01-15,concert,780.00
+income,salary,2026-01-16,freelance payment,1200.00
+expense,food,2026-01-17,dinner,340.00
+expense,transport,2026-01-18,mtr,45.00
+transfer_in,family,2026-01-18,mum loan,1500.00
+expense,shopping,2026-01-19,headphones,1299.00
+expense,health,2026-01-20,pharmacy,180.40
+expense,food,2026-01-21,groceries,402.10
+expense,rent,2026-01-22,storage unit,650.00
+income,bank,2026-01-22,savings interest,12.35
+expense,leisure,2026-01-23,games,458.00
+transfer_out,family,2026-01-24,repay mum,500.00
+expense,education,2026-01-25,online course,299.00
+expense,food,2026-01-26,dinner,215.00
+expense,utilities,2026-01-27,water,180.00
+income,salary,2026-01-28,overtime,800.00
+expense,transport,2026-01-29,bus,22.50
+expense,food,2026-01-30,groceries,398.60
+expense,shopping,2026-01-31,clothes,760.00
+expense,leisure,2026-02-01,movie,150.00
+expense,food,2026-02-02,lunch,64.00
+income,salary,2026-02-03,February salary,25000.00
+expense,rent,2026-02-03,February rent,18000.00
+expense,utilities,2026-02-04,electricity,920.00
+transfer_in,bank,2026-02-05,credit card draw,3000.00
+expense,health,2026-02-06,dental,1800.00
+transfer_out,bank,2026-02-07,credit card payment,1000.00
+expense,transport,2026-02-08,taxi,110.00
+expense,food,2026-02-09,groceries,425.30
+income,bank,2026-02-10,savings interest,14.80
+expense,education,2026-02-10,workshop,350.00
