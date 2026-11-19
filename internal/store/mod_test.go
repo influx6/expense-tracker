@@ -1,0 +1,94 @@
+package store
+
+import (
+	"path/filepath"
+	"testing"
+	"uuid"
+
+	"github.com/influx6/expense-tracker/internal/models"
+)
+
+func newTestStore(t *testing.T) (*ExpenseStore, uuid.UUID) {
+	t.Helper()
+
+	store, err := SqliteExpenseStore(filepath.Join(t.TempDir(), "test.db"), 5000)
+	if err != nil {
+		t.Fatalf("SqliteExpenseStore: %v", err)
+	}
+	t.Cleanup(func() { store.db.Close() })
+
+	return store, uuid.New()
+}
+
+func TestGetOrCreateAccount(t *testing.T) {
+	t.Run("creates an account", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		account, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		if account.AccountType != models.ExpenseAccount || account.Currency != "HKD" || account.UserID != userID {
+			t.Errorf("account = %+v", account)
+		}
+		if account.CreatedAt.IsZero() {
+			t.Errorf("account has no created_at")
+		}
+	})
+
+	t.Run("returns the existing account", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		first, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		second, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		if first.AccountID != second.AccountID {
+			t.Errorf("second call created a new account: %v != %v", first.AccountID, second.AccountID)
+		}
+
+		var count int
+		if err := store.db.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&count); err != nil {
+			t.Fatalf("count accounts: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("accounts table has %d rows, want 1", count)
+		}
+	})
+
+	t.Run("creates a separate account per type", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		expense, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		income, err := store.getOrCreateAccount("food", models.IncomeAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		if expense.AccountID == income.AccountID {
+			t.Errorf("different account types share an account ID")
+		}
+	})
+
+	t.Run("matches names regardless of case", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		lower, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		mixed, err := store.getOrCreateAccount("Food", models.ExpenseAccount, userID)
+		if err != nil {
+			t.Fatalf("getOrCreateAccount: %v", err)
+		}
+		if lower.AccountID != mixed.AccountID {
+			t.Errorf("name case created a new account: %v != %v", lower.AccountID, mixed.AccountID)
+		}
+	})
+}

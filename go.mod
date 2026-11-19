@@ -4,6 +4,7 @@ go 1.27.4
 
 require (
 	github.com/govalues/decimal v0.1.36
+	github.com/jmoiron/sqlx v1.4.0
 	github.com/spf13/cobra v1.10.2
 	modernc.org/sqlite v1.62.0
 )
