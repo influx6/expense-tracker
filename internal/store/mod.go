@@ -292,6 +292,7 @@ type entryRow struct {
 	AccountID     string `db:"account_id"`
 	Direction     string `db:"direction"`
 	Currency      string `db:"currency"`
+	OccuredAt     string `db:"occured_at"`
 	CreatedAt     string `db:"created_at"`
 }
 
@@ -312,6 +313,10 @@ func (r entryRow) toEntry() (models.Entry, error) {
 	if err != nil {
 		return models.Entry{}, ErrorQueryFailed.withErr(err)
 	}
+	occuredAt, err := time.Parse(time.RFC3339, r.OccuredAt)
+	if err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
 	createdAt, err := time.Parse(time.RFC3339, r.CreatedAt)
 	if err != nil {
 		return models.Entry{}, ErrorQueryFailed.withErr(err)
@@ -324,6 +329,7 @@ func (r entryRow) toEntry() (models.Entry, error) {
 		Amount:        amount,
 		Currency:      r.Currency,
 		Direction:     models.Direction(r.Direction),
+		OccuredAt:     occuredAt,
 		CreatedAt:     createdAt,
 	}
 	if err := entry.Validate(); err != nil {
@@ -362,7 +368,7 @@ func (es *ExpenseStore) entriesSeq(ctx context.Context, query string, args ...an
 	}
 }
 
-const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at, a.currency`
+const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at, t.occured_at, a.currency`
 
 func (es *ExpenseStore) AllEntriesByAccount(ctx context.Context, account models.Account) iter.Seq2[models.Entry, error] {
 	return es.AllEntriesByAccountIn(ctx, account, 0, 0)
@@ -397,6 +403,7 @@ func (es *ExpenseStore) AllEntriesByTransaction(ctx context.Context, transaction
 		SELECT `+entryColumns+`
 		FROM entries e
 		JOIN accounts a ON a.account_id = e.account_id
+		JOIN transactions t ON t.transaction_id = e.transaction_id
 		WHERE e.transaction_id = ? AND a.currency = ?
 		ORDER BY e.created_at, e.entry_id`, transaction.TransactionID.String(), currency)
 }

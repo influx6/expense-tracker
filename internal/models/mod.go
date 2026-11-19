@@ -186,6 +186,7 @@ type Entry struct {
 	Amount        decimal.Decimal
 	Currency      string
 	Direction     Direction
+	OccuredAt     time.Time
 	CreatedAt     time.Time
 }
 

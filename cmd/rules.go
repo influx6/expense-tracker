@@ -5,23 +5,37 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/influx6/expense-tracker/internal/humans"
 	"github.com/influx6/expense-tracker/internal/rules"
 	"github.com/influx6/expense-tracker/internal/store"
 	"github.com/influx6/expense-tracker/internal/wallet"
 )
 
-type ruleRunner func(ctx context.Context, wl *wallet.Wallet) (any, error)
+type rule interface {
+	Name() string
+	Analyse(ctx context.Context, wl *wallet.Wallet) (any, error)
+}
 
-var ruleRunners = map[string]ruleRunner{
-	"zerosum": func(ctx context.Context, wl *wallet.Wallet) (any, error) {
-		return (rules.ZeroSumBalance{}).Analyse(ctx, wl)
-	},
-	"wallet-summary": func(ctx context.Context, wl *wallet.Wallet) (any, error) {
-		return (rules.WalletSummaryRule{}).Analyse(ctx, wl)
-	},
+type walletSummaryRule struct{ rules.WalletSummaryRule }
+
+func (r walletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
+	return r.WalletSummaryRule.Analyse(ctx, wl)
+}
+
+type liabilityPeakRule struct{ rules.LiabilityPeakRule }
+
+func (r liabilityPeakRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
+	return r.LiabilityPeakRule.Analyse(ctx, wl)
+}
+
+var ruleRunners = []rule{
+	rules.ZeroSumBalance{},
+	walletSummaryRule{},
+	liabilityPeakRule{},
 }
 
 var rulesCmd = &cobra.Command{
@@ -37,7 +51,7 @@ var rulesCmd = &cobra.Command{
 		}
 
 		name := args[0]
-		run, ok := ruleRunners[name]
+		selected, ok := findRule(name)
 		if !ok {
 			return fmt.Errorf("unknown rule %q, available: %s", name, strings.Join(availableRules(), ", "))
 		}
@@ -58,7 +72,7 @@ var rulesCmd = &cobra.Command{
 			return err
 		}
 
-		result, err := run(ctx, expenseWallet)
+		result, err := selected.Analyse(ctx, expenseWallet)
 		if err != nil {
 			return err
 		}
@@ -69,6 +83,8 @@ var rulesCmd = &cobra.Command{
 			fmt.Fprintf(out, "%s: ok\n", name)
 		case *rules.WalletSummary:
 			printWalletSummary(cmd, expenseWallet.Currency, value)
+		case *rules.LiabilityPeaks:
+			printLiabilityPeaks(cmd, value)
 		default:
 			fmt.Fprintln(out, value)
 		}
@@ -76,10 +92,38 @@ var rulesCmd = &cobra.Command{
 	},
 }
 
+func printLiabilityPeaks(cmd *cobra.Command, peaks *rules.LiabilityPeaks) {
+	out := cmd.OutOrStdout()
+
+	if len(peaks.Peaks) == 0 {
+		fmt.Fprintln(out, "Liability peaks: none")
+		return
+	}
+
+	fmt.Fprintln(out, "Liability peaks:")
+	fmt.Fprintf(out, "  %-6s %-10s %20s\n", "Year", "Month", "Net Liability Taken On")
+	for _, peak := range peaks.Peaks {
+		fmt.Fprintf(out, "  %-6d %-10s %20s\n",
+			peak.Year,
+			time.Month(peak.Month).String(),
+			humans.Amount(peak.Amount),
+		)
+	}
+}
+
+func findRule(name string) (rule, bool) {
+	for _, available := range ruleRunners {
+		if available.Name() == name {
+			return available, true
+		}
+	}
+	return nil, false
+}
+
 func availableRules() []string {
 	names := make([]string, 0, len(ruleRunners))
-	for name := range ruleRunners {
-		names = append(names, name)
+	for _, available := range ruleRunners {
+		names = append(names, available.Name())
 	}
 	sort.Strings(names)
 	return names

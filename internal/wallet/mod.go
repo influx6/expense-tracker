@@ -148,6 +148,7 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 		Amount:        t.Amount,
 		Currency:      t.SrcAccount.Currency,
 		Direction:     models.SourceDirection,
+		OccuredAt:     t.OccuredAt,
 		CreatedAt:     time.Now(),
 	}
 	destinationEntry := models.Entry{
@@ -157,6 +158,7 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 		Amount:        t.Amount,
 		Currency:      t.DestAccount.Currency,
 		Direction:     models.DestinationDirection,
+		OccuredAt:     t.OccuredAt,
 		CreatedAt:     time.Now(),
 	}
 
