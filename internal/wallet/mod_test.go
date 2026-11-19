@@ -16,11 +16,6 @@ import (
 	"github.com/influx6/expense-tracker/internal/wallet"
 )
 
-type AccountSummary struct {
-	Transactions uint `db:"transactions"`
-	Entries      uint `db:"entries"`
-}
-
 func newTestWallet(t *testing.T) (*wallet.Wallet, string) {
 	t.Helper()
 
@@ -47,32 +42,109 @@ func openDB(t *testing.T, path string) *sqlx.DB {
 	return db
 }
 
+type AccountSummary struct {
+	Transactions uint
+	Entries      uint
+	Received     decimal.Decimal
+	Given        decimal.Decimal
+	Balance      decimal.Decimal
+}
+
+type accountAccumulator struct {
+	transactions map[string]struct{}
+	entries      uint
+	received     decimal.Decimal
+	given        decimal.Decimal
+}
+
 func accountSummaries(t *testing.T, db *sqlx.DB) map[string]AccountSummary {
 	t.Helper()
 
-	var rows []struct {
-		AccountName  string `db:"account_name"`
-		Transactions uint   `db:"transactions"`
-		Entries      uint   `db:"entries"`
-	}
-	if err := db.Select(&rows, `
-		SELECT a.account_name,
-		       COUNT(DISTINCT e.transaction_id) AS transactions,
-		       COUNT(e.entry_id) AS entries
-		FROM accounts a
-		LEFT JOIN entries e ON e.account_id = a.account_id
-		GROUP BY a.account_id, a.account_name`); err != nil {
+	var accountNames []string
+	if err := db.Select(&accountNames, `SELECT account_name FROM accounts`); err != nil {
 		t.Fatal(err)
 	}
 
-	summaries := make(map[string]AccountSummary, len(rows))
+	accs := make(map[string]*accountAccumulator, len(accountNames))
+	for _, name := range accountNames {
+		accs[name] = &accountAccumulator{transactions: make(map[string]struct{})}
+	}
+
+	var rows []struct {
+		AccountName   string `db:"account_name"`
+		TransactionID string `db:"transaction_id"`
+		Direction     string `db:"direction"`
+		Amount        string `db:"amount"`
+	}
+	if err := db.Select(&rows, `
+		SELECT a.account_name, e.transaction_id, e.direction, e.amount
+		FROM entries e
+		JOIN accounts a ON a.account_id = e.account_id`); err != nil {
+		t.Fatal(err)
+	}
+
 	for _, row := range rows {
-		summaries[row.AccountName] = AccountSummary{
-			Transactions: row.Transactions,
-			Entries:      row.Entries,
+		acc := accs[row.AccountName]
+		acc.entries++
+		acc.transactions[row.TransactionID] = struct{}{}
+
+		amount, err := decimal.Parse(row.Amount)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.Direction == string(models.DestinationDirection) {
+			acc.received, err = acc.received.Add(amount)
+		} else {
+			acc.given, err = acc.given.Add(amount)
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	summaries := make(map[string]AccountSummary, len(accs))
+	for name, acc := range accs {
+		balance, err := acc.received.Sub(acc.given)
+		if err != nil {
+			t.Fatal(err)
+		}
+		summaries[name] = AccountSummary{
+			Transactions: uint(len(acc.transactions)),
+			Entries:      acc.entries,
+			Received:     acc.received,
+			Given:        acc.given,
+			Balance:      balance,
 		}
 	}
 	return summaries
+}
+
+func summariesEqual(got, want map[string]AccountSummary) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for name, wantSummary := range want {
+		gotSummary, ok := got[name]
+		if !ok ||
+			gotSummary.Transactions != wantSummary.Transactions ||
+			gotSummary.Entries != wantSummary.Entries ||
+			gotSummary.Received.Cmp(wantSummary.Received) != 0 ||
+			gotSummary.Given.Cmp(wantSummary.Given) != 0 ||
+			gotSummary.Balance.Cmp(wantSummary.Balance) != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func mustDecimal(t *testing.T, s string) decimal.Decimal {
+	t.Helper()
+
+	d, err := decimal.Parse(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }
 
 func testEvent(t *testing.T, eventType models.EventType, amount, category string) models.TransactionEvent {
@@ -107,12 +179,34 @@ func TestApply(t *testing.T) {
 
 		db := openDB(t, path)
 		wantSummaries := map[string]AccountSummary{
-			"wallet":      {Transactions: 4, Entries: 4},
-			"salary":      {Transactions: 1, Entries: 1},
-			"food":        {Transactions: 1, Entries: 1},
-			"friend_loan": {Transactions: 2, Entries: 2},
+			"wallet": {
+				Transactions: 4,
+				Entries:      4,
+				Received:     mustDecimal(t, "150.00"),
+				Given:        mustDecimal(t, "30.00"),
+				Balance:      mustDecimal(t, "120.00"),
+			},
+			"salary": {
+				Transactions: 1,
+				Entries:      1,
+				Given:        mustDecimal(t, "100.00"),
+				Balance:      mustDecimal(t, "-100.00"),
+			},
+			"food": {
+				Transactions: 1,
+				Entries:      1,
+				Received:     mustDecimal(t, "20.00"),
+				Balance:      mustDecimal(t, "20.00"),
+			},
+			"friend_loan": {
+				Transactions: 2,
+				Entries:      2,
+				Received:     mustDecimal(t, "10.00"),
+				Given:        mustDecimal(t, "50.00"),
+				Balance:      mustDecimal(t, "-40.00"),
+			},
 		}
-		if got := accountSummaries(t, db); !maps.Equal(got, wantSummaries) {
+		if got := accountSummaries(t, db); !summariesEqual(got, wantSummaries) {
 			t.Errorf("account summaries = %v, want %v", got, wantSummaries)
 		}
 
@@ -172,7 +266,7 @@ func TestApply(t *testing.T) {
 			"salary": {},
 			"food":   {},
 		}
-		if got := accountSummaries(t, db); !maps.Equal(got, wantSummaries) {
+		if got := accountSummaries(t, db); !summariesEqual(got, wantSummaries) {
 			t.Errorf("account summaries = %v, want %v", got, wantSummaries)
 		}
 	})
