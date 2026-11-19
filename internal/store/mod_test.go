@@ -139,4 +139,16 @@ func TestStoreAccountErrors(t *testing.T) {
 			t.Errorf("bad created_at error = %v, want ErrorQueryFailed", err)
 		}
 	})
+
+	t.Run("insert error", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		if _, err := store.db.Exec(`CREATE TRIGGER block_insert BEFORE INSERT ON accounts
+			BEGIN SELECT RAISE(ABORT, 'blocked'); END;`); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorInsert) {
+			t.Errorf("insert error = %v, want ErrorInsert", err)
+		}
+	})
 }
