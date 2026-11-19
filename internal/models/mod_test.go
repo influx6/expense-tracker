@@ -42,7 +42,6 @@ func TestAccountValidate(t *testing.T) {
 		{name: "uppercase name", mutate: func(a *models.Account) { a.AccountName = "Food" }},
 		{name: "name with digit", mutate: func(a *models.Account) { a.AccountName = "food2" }},
 		{name: "unknown type", mutate: func(a *models.Account) { a.AccountType = models.AccountType("LOAN") }},
-		{name: "wrong currency", mutate: func(a *models.Account) { a.Currency = "USD" }},
 	}
 
 	for _, tc := range tests {

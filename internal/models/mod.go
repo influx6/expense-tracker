@@ -112,23 +112,6 @@ type Account struct {
 	CreatedAt   time.Time
 }
 
-type Transaction struct {
-	TransactionID uuid.UUID
-	UserID        uuid.UUID
-	Description   string
-	OccuredAt     time.Time
-	CreatedAt     time.Time
-}
-
-type Entry struct {
-	EntryID       uuid.UUID
-	TransactionID uuid.UUID
-	AccountID     uuid.UUID
-	Amount        decimal.Decimal
-	Direction     Direction
-	CreatedAt     time.Time
-}
-
 // AccountNamePattern matches valid account names: lowercase letters and underscores.
 var AccountNamePattern = regexp.MustCompile(`^[a-z_]+$`)
 
@@ -147,10 +130,15 @@ func (a Account) Validate() error {
 	default:
 		return InvalidAccount.withErr(fmt.Errorf("unknown account_type %q", a.AccountType))
 	}
-	if a.Currency != "HKD" {
-		return InvalidAccount.withErr(fmt.Errorf("currency must be HKD, got %q", a.Currency))
-	}
 	return nil
+}
+
+type Transaction struct {
+	TransactionID uuid.UUID
+	UserID        uuid.UUID
+	Description   string
+	OccuredAt     time.Time
+	CreatedAt     time.Time
 }
 
 func (t Transaction) Validate() error {
@@ -164,6 +152,15 @@ func (t Transaction) Validate() error {
 		return InvalidTransaction.withErr(fmt.Errorf("missing occured_at"))
 	}
 	return nil
+}
+
+type Entry struct {
+	EntryID       uuid.UUID
+	TransactionID uuid.UUID
+	AccountID     uuid.UUID
+	Amount        decimal.Decimal
+	Direction     Direction
+	CreatedAt     time.Time
 }
 
 func (e Entry) Validate() error {
