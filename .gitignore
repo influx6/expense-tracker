@@ -1,0 +1,63 @@
+# Binaries and build output
+/expense-tracker
+/main
+/dist/
+/build/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test and coverage artifacts
+*.test
+*.out
+*.prof
+*.pprof
+coverage.*
+*.cover
+*.coverprofile
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendored dependencies
+/vendor/
+
+# Runtime databases and their SQLite sidecar files
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# Generated reports
+invalid.csv
+
+# Logs
+*.log
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Temporary files
+/tmp/
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors and IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+expense-tracker
