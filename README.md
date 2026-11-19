@@ -71,7 +71,7 @@ I used AI where it made sense selectively, such as:
 
 ## CLI Commands
 
-Every command opens the SQLite database passed with `--db` (default `expense-tracker.db`). The CLI uses one fixed default user and HKD.
+Commands that read or write the store accept `--db` (default `expense-tracker.db`); `rules list` does not touch the database. The CLI uses one fixed default user and HKD.
 
 ### Add
 
@@ -98,7 +98,7 @@ Running the same entry again prints `already recorded`. The id is derived from `
 Import a CSV with columns `when,amount,desc,category,type`:
 
 ```bash
-expense-tracker load --file samples/mixed.csv --invalid invalid.csv
+expense-tracker load -f samples/mixed.csv --invalid invalid.csv --db expense-tracker.db
 ```
 
 ```
@@ -165,9 +165,9 @@ zerosum
 Run a rule:
 
 ```bash
-expense-tracker rules run zerosum
-expense-tracker rules run wallet-summary
-expense-tracker rules run liability-peaks
+expense-tracker rules run zerosum --db expense-tracker.db
+expense-tracker rules run wallet-summary --db expense-tracker.db
+expense-tracker rules run liability-peaks --db expense-tracker.db
 ```
 
 - `zerosum` verifies that all account balances sum to zero.
@@ -180,7 +180,7 @@ expense-tracker rules run liability-peaks
     2026   January                4,000.00
   ```
 
-New rules implement `wallet.ServiceRule[T]` and are registered in `cmd/rules.go`.
+Rules return a `wallet.PrintOutput` and implement `wallet.ServiceRule[wallet.PrintOutput]`. Add new rules to the `ruleRunners` slice in `cmd/rules.go`.
 
 ## Specifications: Assumptions, Laws, Invariants
 
