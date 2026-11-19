@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"uuid"
@@ -89,6 +90,53 @@ func TestGetOrCreateAccount(t *testing.T) {
 		}
 		if lower.AccountID != mixed.AccountID {
 			t.Errorf("name case created a new account: %v != %v", lower.AccountID, mixed.AccountID)
+		}
+	})
+}
+
+func TestStoreAccountErrors(t *testing.T) {
+	t.Run("query error", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		if _, err := store.db.Exec(`DROP TABLE accounts`); err != nil {
+			t.Fatalf("drop accounts: %v", err)
+		}
+		if _, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+			t.Errorf("query error = %v, want ErrorQueryFailed", err)
+		}
+	})
+
+	t.Run("invalid name", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		if _, err := store.getOrCreateAccount("food2", models.ExpenseAccount, userID); !errors.Is(err, models.InvalidAccount) {
+			t.Errorf("validation error = %v, want models.InvalidAccount", err)
+		}
+	})
+
+	t.Run("corrupt account id", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		if _, err := store.db.Exec(`
+			INSERT INTO accounts (account_id, account_name, account_type, user_id, currency)
+			VALUES ('not-a-uuid', 'food', 'EXPENSE', ?, 'HKD')`, userID.String()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+			t.Errorf("bad account_id error = %v, want ErrorQueryFailed", err)
+		}
+	})
+
+	t.Run("corrupt created at", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		if _, err := store.db.Exec(`
+			INSERT INTO accounts (account_id, account_name, account_type, user_id, currency, created_at)
+			VALUES (?, 'income', 'INCOME', ?, 'HKD', 'not-a-time')`, uuid.New().String(), userID.String()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := store.getOrCreateAccount("income", models.IncomeAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+			t.Errorf("bad created_at error = %v, want ErrorQueryFailed", err)
 		}
 	})
 }
