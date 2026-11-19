@@ -45,7 +45,10 @@ tracking
 
 ## AI Disclaimer
 
-1. I used AI where it made sense: writing tests for established code and edgecases
+I used AI where it made sense selectively, such as:
+
+- Writing tests for established code and edgecases
+- Speeding through guided implementation steps
 
 ## Important
 

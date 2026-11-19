@@ -111,7 +111,7 @@ func (es *ExpenseStore) createSchema() error {
 			account_name TEXT NOT NULL,
 			account_type TEXT NOT NULL CHECK (account_type IN ('ASSET', 'INCOME', 'LIABILITY', 'EXPENSE')),
 			user_id TEXT NOT NULL,
-			currency TEXT NOT NULL DEFAULT 'HKD' CHECK (currency = 'HKD'),
+			currency TEXT NOT NULL,
 			created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 			UNIQUE (user_id, account_name, account_type)
 		);
