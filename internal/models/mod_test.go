@@ -106,6 +106,7 @@ func validEntries(t *testing.T) []models.Entry {
 		TransactionID: txID,
 		AccountID:     uuid.New(),
 		Amount:        mustDecimal(t, "10.00"),
+		Currency:      "HKD",
 		Direction:     models.SourceDirection,
 	}
 	destination := models.Entry{
@@ -113,6 +114,7 @@ func validEntries(t *testing.T) []models.Entry {
 		TransactionID: txID,
 		AccountID:     uuid.New(),
 		Amount:        mustDecimal(t, "10.00"),
+		Currency:      "HKD",
 		Direction:     models.DestinationDirection,
 	}
 	return []models.Entry{source, destination}
@@ -127,6 +129,7 @@ func TestEntryValidate(t *testing.T) {
 		{name: "missing entry id", mutate: func(e *models.Entry) { e.EntryID = uuid.Nil() }},
 		{name: "missing transaction id", mutate: func(e *models.Entry) { e.TransactionID = uuid.Nil() }},
 		{name: "missing account id", mutate: func(e *models.Entry) { e.AccountID = uuid.Nil() }},
+		{name: "missing currency", mutate: func(e *models.Entry) { e.Currency = "" }},
 		{name: "zero amount", mutate: func(e *models.Entry) { e.Amount = decimal.Decimal{} }},
 		{name: "negative amount", mutate: func(e *models.Entry) { e.Amount = mustDecimal(t, "-1") }},
 		{name: "unknown direction", mutate: func(e *models.Entry) { e.Direction = "SIDEWAYS" }},
@@ -184,6 +187,14 @@ func TestValidateEntries(t *testing.T) {
 			name: "same account on both sides",
 			mutate: func(e []models.Entry) []models.Entry {
 				e[1].AccountID = e[0].AccountID
+				return e
+			},
+			want: models.InvalidEntries,
+		},
+		{
+			name: "different currencies",
+			mutate: func(e []models.Entry) []models.Entry {
+				e[1].Currency = "USD"
 				return e
 			},
 			want: models.InvalidEntries,

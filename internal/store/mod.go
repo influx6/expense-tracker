@@ -26,6 +26,7 @@ const (
 	CodeAccountNotFound    DbErrorCode = "ACCOUNT_NOT_FOUND"
 	CodeTransactionFailed  DbErrorCode = "TRANSACTION_FAILED"
 	CodeEntryCountMismatch DbErrorCode = "ENTRY_COUNT_MISMATCH"
+	CodeCurrencyMismatch   DbErrorCode = "CURRENCY_MISMATCH"
 	CodeNotImplemented     DbErrorCode = "NOT_IMPLEMENTED"
 )
 
@@ -36,6 +37,7 @@ var (
 	ErrorAccountNotFound    = DbError{Code: CodeAccountNotFound, Label: "Account not found"}
 	ErrorTransactionFailed  = DbError{Code: CodeTransactionFailed, Label: "Transaction failed", IsTerminal: true}
 	ErrorEntryCountMismatch = DbError{Code: CodeEntryCountMismatch, Label: "Entry count must be twice the transaction count"}
+	ErrorCurrencyMismatch   = DbError{Code: CodeCurrencyMismatch, Label: "Entry currency does not match account currency"}
 )
 
 type DbError struct {
@@ -150,9 +152,7 @@ func (es *ExpenseStore) createSchema() error {
 	return nil
 }
 
-const defaultCurrency = "HKD"
-
-func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
+func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType models.AccountType, userID uuid.UUID, currency string) (models.Account, error) {
 	category, err := models.ToAccountCategory(accountName)
 	if err != nil {
 		return models.Account{}, err
@@ -171,7 +171,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		AccountCategory: category,
 		AccountType:     accountType,
 		UserID:          userID,
-		Currency:        defaultCurrency,
+		Currency:        currency,
 	}
 	if err := account.Validate(); err != nil {
 		return models.Account{}, err
@@ -226,12 +226,12 @@ func (r accountRow) toAccount(userID uuid.UUID) (models.Account, error) {
 	}, nil
 }
 
-func (es *ExpenseStore) AllAccounts(userID uuid.UUID) iter.Seq2[models.Account, error] {
+func (es *ExpenseStore) AllAccounts(userID uuid.UUID, currency string) iter.Seq2[models.Account, error] {
 	return func(yield func(models.Account, error) bool) {
 		rows, err := es.db.Queryx(`
 			SELECT account_id, account_name, account_type, currency, created_at
 			FROM accounts
-			WHERE user_id = ?`, userID.String())
+			WHERE user_id = ? AND currency = ?`, userID.String(), currency)
 		if err != nil {
 			yield(models.Account{}, ErrorQueryFailed.withErr(err))
 			return
@@ -265,6 +265,7 @@ type entryRow struct {
 	TransactionID string `db:"transaction_id"`
 	AccountID     string `db:"account_id"`
 	Direction     string `db:"direction"`
+	Currency      string `db:"currency"`
 	CreatedAt     string `db:"created_at"`
 }
 
@@ -295,6 +296,7 @@ func (r entryRow) toEntry() (models.Entry, error) {
 		TransactionID: transactionID,
 		AccountID:     accountID,
 		Amount:        amount,
+		Currency:      r.Currency,
 		Direction:     models.Direction(r.Direction),
 		CreatedAt:     createdAt,
 	}
@@ -334,31 +336,34 @@ func (es *ExpenseStore) entriesSeq(query string, args ...any) iter.Seq2[models.E
 	}
 }
 
-const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at`
+const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at, a.currency`
 
 func (es *ExpenseStore) AllEntriesByAccount(account models.Account) iter.Seq2[models.Entry, error] {
 	return es.entriesSeq(`
 		SELECT `+entryColumns+`
 		FROM entries e
-		WHERE e.account_id = ?
-		ORDER BY e.created_at, e.entry_id`, account.AccountID.String())
+		JOIN accounts a ON a.account_id = e.account_id
+		WHERE e.account_id = ? AND a.currency = ?
+		ORDER BY e.created_at, e.entry_id`, account.AccountID.String(), account.Currency)
 }
 
-func (es *ExpenseStore) AllEntriesByTransaction(transaction models.Transaction) iter.Seq2[models.Entry, error] {
+func (es *ExpenseStore) AllEntriesByTransaction(transaction models.Transaction, currency string) iter.Seq2[models.Entry, error] {
 	return es.entriesSeq(`
 		SELECT `+entryColumns+`
 		FROM entries e
-		WHERE e.transaction_id = ?
-		ORDER BY e.created_at, e.entry_id`, transaction.TransactionID.String())
+		JOIN accounts a ON a.account_id = e.account_id
+		WHERE e.transaction_id = ? AND a.currency = ?
+		ORDER BY e.created_at, e.entry_id`, transaction.TransactionID.String(), currency)
 }
 
-func (es *ExpenseStore) AllEntries(userID uuid.UUID) iter.Seq2[models.Entry, error] {
+func (es *ExpenseStore) AllEntries(userID uuid.UUID, currency string) iter.Seq2[models.Entry, error] {
 	return es.entriesSeq(`
 		SELECT `+entryColumns+`
 		FROM entries e
 		JOIN transactions t ON t.transaction_id = e.transaction_id
-		WHERE t.user_id = ?
-		ORDER BY e.created_at, e.entry_id`, userID.String())
+		JOIN accounts a ON a.account_id = e.account_id
+		WHERE t.user_id = ? AND a.currency = ?
+		ORDER BY e.created_at, e.entry_id`, userID.String(), currency)
 }
 
 func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
@@ -443,6 +448,18 @@ func insertEntries(tx *sqlx.Tx, entries []models.Entry) error {
 		if err := e.Validate(); err != nil {
 			return err
 		}
+
+		var accountCurrency string
+		if err := tx.Get(&accountCurrency, `SELECT currency FROM accounts WHERE account_id = ?`, e.AccountID.String()); err != nil {
+			return ErrorInsert.withErr(err)
+		}
+		if accountCurrency != e.Currency {
+			return ErrorCurrencyMismatch.withErr(fmt.Errorf(
+				"entry %s currency %q does not match account %s currency %q",
+				e.EntryID, e.Currency, e.AccountID, accountCurrency,
+			))
+		}
+
 		if _, err := stmt.Exec(
 			e.EntryID.String(),
 			e.Amount.String(),

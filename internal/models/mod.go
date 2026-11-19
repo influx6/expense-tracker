@@ -146,6 +146,9 @@ func (a Account) Validate() error {
 	if err := a.AccountCategory.Validate(); err != nil {
 		return err
 	}
+	if strings.TrimSpace(a.Currency) == "" {
+		return InvalidAccount.withErr(fmt.Errorf("missing currency"))
+	}
 	switch a.AccountType {
 	case AssetAccount, LiabilityAccount, IncomeAccount, ExpenseAccount:
 	default:
@@ -180,6 +183,7 @@ type Entry struct {
 	TransactionID uuid.UUID
 	AccountID     uuid.UUID
 	Amount        decimal.Decimal
+	Currency      string
 	Direction     Direction
 	CreatedAt     time.Time
 }
@@ -193,6 +197,9 @@ func (e Entry) Validate() error {
 	}
 	if e.AccountID == uuid.Nil() {
 		return InvalidEntry.withErr(fmt.Errorf("missing account_id"))
+	}
+	if strings.TrimSpace(e.Currency) == "" {
+		return InvalidEntry.withErr(fmt.Errorf("missing currency"))
 	}
 	if !e.Amount.IsPos() {
 		return InvalidEntry.withErr(fmt.Errorf("amount must be strictly positive, got %s", e.Amount))
@@ -225,6 +232,9 @@ func ValidateTransactionEntries(source Entry, destination Entry) error {
 	}
 	if source.AccountID == destination.AccountID {
 		return InvalidEntries.withErr(fmt.Errorf("source and destination must use different accounts"))
+	}
+	if source.Currency != destination.Currency {
+		return InvalidEntries.withErr(fmt.Errorf("entries have different currencies: %q != %q", source.Currency, destination.Currency))
 	}
 	if source.Amount.Cmp(destination.Amount) != 0 {
 		return InvalidEntries.withErr(fmt.Errorf("entry amounts differ: %s != %s", source.Amount, destination.Amount))

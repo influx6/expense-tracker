@@ -31,7 +31,7 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("creates an account", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		account, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+		account, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -46,11 +46,11 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("returns the existing account", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		first, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+		first, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		second, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+		second, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -70,11 +70,11 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("creates a separate account per type", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+		expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		income, err := store.GetOrCreateAccount("food", models.IncomeAccount, userID)
+		income, err := store.GetOrCreateAccount("food", models.IncomeAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -86,11 +86,11 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("matches names regardless of case", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		lower, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+		lower, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		mixed, err := store.GetOrCreateAccount("Food", models.ExpenseAccount, userID)
+		mixed, err := store.GetOrCreateAccount("Food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -107,7 +107,7 @@ func TestStoreAccountErrors(t *testing.T) {
 		if _, err := store.db.Exec(`DROP TABLE accounts`); err != nil {
 			t.Fatalf("drop accounts: %v", err)
 		}
-		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("query error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -115,7 +115,7 @@ func TestStoreAccountErrors(t *testing.T) {
 	t.Run("invalid name", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		if _, err := store.GetOrCreateAccount("food2", models.ExpenseAccount, userID); !errors.Is(err, models.InvalidAccount) {
+		if _, err := store.GetOrCreateAccount("food2", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, models.InvalidAccount) {
 			t.Errorf("validation error = %v, want models.InvalidAccount", err)
 		}
 	})
@@ -128,7 +128,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			VALUES ('not-a-uuid', 'food', 'EXPENSE', ?, 'HKD')`, userID.String()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("bad account_id error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -141,7 +141,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			VALUES (?, 'income', 'INCOME', ?, 'HKD', 'not-a-time')`, uuid.New().String(), userID.String()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.GetOrCreateAccount("income", models.IncomeAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount("income", models.IncomeAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("bad created_at error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -153,7 +153,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			BEGIN SELECT RAISE(ABORT, 'blocked'); END;`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorInsert) {
+		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorInsert) {
 			t.Errorf("insert error = %v, want ErrorInsert", err)
 		}
 	})
@@ -161,7 +161,7 @@ func TestStoreAccountErrors(t *testing.T) {
 	t.Run("one asset per user", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		if _, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID); err != nil {
+		if _, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID, "HKD"); err != nil {
 			t.Fatalf("create wallet account: %v", err)
 		}
 
@@ -190,11 +190,11 @@ func countRows(t *testing.T, store *ExpenseStore, table string) int {
 func testAccounts(t *testing.T, store *ExpenseStore, userID uuid.UUID) (models.Account, models.Account) {
 	t.Helper()
 
-	asset, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID)
+	asset, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID, "HKD")
 	if err != nil {
 		t.Fatal(err)
 	}
-	expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
+	expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -223,6 +223,7 @@ func testEntryPair(t *testing.T, transactionID, assetID, expenseID uuid.UUID) []
 			TransactionID: transactionID,
 			AccountID:     assetID,
 			Amount:        amount,
+			Currency:      "HKD",
 			Direction:     models.SourceDirection,
 		},
 		{
@@ -230,6 +231,7 @@ func testEntryPair(t *testing.T, transactionID, assetID, expenseID uuid.UUID) []
 			TransactionID: transactionID,
 			AccountID:     expenseID,
 			Amount:        amount,
+			Currency:      "HKD",
 			Direction:     models.DestinationDirection,
 		},
 	}
@@ -316,6 +318,25 @@ func TestInsertAllWith(t *testing.T) {
 		}
 	})
 
+	t.Run("rolls back on currency mismatch", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		txn := testTransaction(userID)
+		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+		entries[0].Currency = "USD"
+
+		err := store.InsertAllWith([]models.Transaction{txn}, entries, nil)
+		if !errors.Is(err, ErrorCurrencyMismatch) {
+			t.Fatalf("error = %v, want ErrorCurrencyMismatch", err)
+		}
+		if got := countRows(t, store, "transactions"); got != 0 {
+			t.Errorf("transactions = %d, want 0", got)
+		}
+		if got := countRows(t, store, "entries"); got != 0 {
+			t.Errorf("entries = %d, want 0", got)
+		}
+	})
+
 	t.Run("rolls back both when entries fail", func(t *testing.T) {
 		store, userID := newTestStore(t)
 		asset, expense := testAccounts(t, store, userID)
@@ -395,19 +416,25 @@ func TestEntryIterators(t *testing.T) {
 	})
 
 	t.Run("by transaction", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntriesByTransaction(txn)); len(got) != 2 {
+		if got := collectEntries(t, store.AllEntriesByTransaction(txn, "HKD")); len(got) != 2 {
 			t.Errorf("entries = %d, want 2", len(got))
 		}
 	})
 
 	t.Run("by user", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntries(userID)); len(got) != 2 {
+		if got := collectEntries(t, store.AllEntries(userID, "HKD")); len(got) != 2 {
 			t.Errorf("entries = %d, want 2", len(got))
 		}
 	})
 
 	t.Run("other user", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntries(uuid.New())); len(got) != 0 {
+		if got := collectEntries(t, store.AllEntries(uuid.New(), "HKD")); len(got) != 0 {
+			t.Errorf("entries = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("other currency", func(t *testing.T) {
+		if got := collectEntries(t, store.AllEntries(userID, "USD")); len(got) != 0 {
 			t.Errorf("entries = %d, want 0", len(got))
 		}
 	})
