@@ -62,8 +62,8 @@ var (
 type Wallet struct {
 	userId       uuid.UUID
 	currency     string
-	expenseStore *store.ExpenseStore
-	assetAccount *models.Account
+	AssetAccount *models.Account
+	ExpenseStore *store.ExpenseStore
 }
 
 func NewWallet(es *store.ExpenseStore, currency string, userId uuid.UUID) (*Wallet, error) {
@@ -76,7 +76,7 @@ func NewWallet(es *store.ExpenseStore, currency string, userId uuid.UUID) (*Wall
 		return nil, ErrorAccountError.withErr(getAccountErr)
 	}
 
-	return &Wallet{userId: userId, currency: currency, assetAccount: &assetAccount, expenseStore: es}, nil
+	return &Wallet{userId: userId, currency: currency, AssetAccount: &assetAccount, ExpenseStore: es}, nil
 }
 
 func (w *Wallet) Apply(events []models.TransactionEvent) error {
@@ -105,7 +105,7 @@ func (w *Wallet) Apply(events []models.TransactionEvent) error {
 		entries = append(entries, transactionEntries...)
 	}
 
-	return w.expenseStore.InsertAllWith(transactions, entries, func(tx *sqlx.Tx) error {
+	return w.ExpenseStore.InsertAllWith(transactions, entries, func(tx *sqlx.Tx) error {
 		// we perform double accounting validation here that
 		// all SUM(ASSET.entries) + SUM(EXPENSE.entries) + SUM(LIABILTY.entries) + SUM(INCOME.entries) == 0
 		return nil
@@ -160,42 +160,42 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 
 	switch event.Type {
 	case models.EventExpense:
-		destAccount, destAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.ExpenseAccount, w.userId)
+		destAccount, destAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.ExpenseAccount, w.userId)
 		if destAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(destAccountErr)
 		}
 
-		changeRequest.SrcAccount = *w.assetAccount
+		changeRequest.SrcAccount = *w.AssetAccount
 		changeRequest.DestAccount = destAccount
 		return changeRequest, nil
 	case models.EventIncome:
-		incomeAccount, incomeAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.IncomeAccount, w.userId)
+		incomeAccount, incomeAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.IncomeAccount, w.userId)
 		if incomeAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(incomeAccountErr)
 		}
 
 		changeRequest.SrcAccount = incomeAccount
-		changeRequest.DestAccount = *w.assetAccount
+		changeRequest.DestAccount = *w.AssetAccount
 		return changeRequest, nil
 	case models.EventTransferIn:
 		// transfers in increases assets but they are liabilities as well
 		// that will need to be settled, but they do increase asset value.
-		liabilityAccount, liabilityAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId)
+		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId)
 		if liabilityAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
 
 		changeRequest.SrcAccount = liabilityAccount
-		changeRequest.DestAccount = *w.assetAccount
+		changeRequest.DestAccount = *w.AssetAccount
 		return changeRequest, nil
 	case models.EventTransferOut:
 		// transfers out decreases asset value but also decreases your libability.
-		liabilityAccount, liabilityAccountErr := w.expenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId)
+		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId)
 		if liabilityAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
 
-		changeRequest.SrcAccount = *w.assetAccount
+		changeRequest.SrcAccount = *w.AssetAccount
 		changeRequest.DestAccount = liabilityAccount
 		return changeRequest, nil
 	default:
