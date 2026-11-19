@@ -28,15 +28,18 @@ type WalletSummary struct {
 	Categories []AccountSummary
 }
 
-var _ wallet.ServiceRule[any] = WalletSummaryRule{}
+var _ wallet.ServiceRule[*WalletSummary] = WalletSummaryRule{}
 
-type WalletSummaryRule struct{}
+type WalletSummaryRule struct {
+	Year  int
+	Month int
+}
 
-func (WalletSummaryRule) Name() string {
+func (r WalletSummaryRule) Name() string {
 	return "wallet-summary"
 }
 
-func (WalletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
+func (r WalletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (*WalletSummary, error) {
 	totals := map[models.AccountType]*TypeSummary{
 		models.AssetAccount:     {AccountType: models.AssetAccount},
 		models.LiabilityAccount: {AccountType: models.LiabilityAccount},
@@ -45,13 +48,13 @@ func (WalletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, e
 	}
 	var categories []AccountSummary
 
-	for account, err := range wl.ExpenseStore.AllAccounts(ctx, wl.UserId, wl.Currency) {
+	for account, err := range wl.ExpenseStore.AllAccountsIn(ctx, wl.UserId, wl.Currency, r.Year, r.Month) {
 		if err != nil {
 			return nil, err
 		}
 
 		accountSummary := AccountSummary{Account: account}
-		for entry, err := range wl.ExpenseStore.AllEntriesByAccount(ctx, account) {
+		for entry, err := range wl.ExpenseStore.AllEntriesByAccountIn(ctx, account, r.Year, r.Month) {
 			if err != nil {
 				return nil, err
 			}
@@ -91,7 +94,7 @@ func (WalletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, e
 		}
 	}
 
-	summary := WalletSummary{
+	return &WalletSummary{
 		Totals: []TypeSummary{
 			*totals[models.AssetAccount],
 			*totals[models.LiabilityAccount],
@@ -99,6 +102,5 @@ func (WalletSummaryRule) Analyse(ctx context.Context, wl *wallet.Wallet) (any, e
 			*totals[models.ExpenseAccount],
 		},
 		Categories: categories,
-	}
-	return summary, nil
+	}, nil
 }

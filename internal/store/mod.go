@@ -228,11 +228,36 @@ func (r accountRow) toAccount(userID uuid.UUID) (models.Account, error) {
 }
 
 func (es *ExpenseStore) AllAccounts(ctx context.Context, userID uuid.UUID, currency string) iter.Seq2[models.Account, error] {
+	return es.AllAccountsIn(ctx, userID, currency, 0, 0)
+}
+
+func (es *ExpenseStore) AllAccountsIn(ctx context.Context, userID uuid.UUID, currency string, year, month int) iter.Seq2[models.Account, error] {
 	return func(yield func(models.Account, error) bool) {
-		rows, err := es.db.QueryxContext(ctx, `
-			SELECT account_id, account_name, account_type, currency, created_at
-			FROM accounts
-			WHERE user_id = ? AND currency = ?`, userID.String(), currency)
+		query := `
+			SELECT a.account_id, a.account_name, a.account_type, a.currency, a.created_at
+			FROM accounts a
+			WHERE a.user_id = ? AND a.currency = ?`
+		args := []any{userID.String(), currency}
+
+		if year > 0 {
+			query += `
+			AND EXISTS (
+				SELECT 1
+				FROM entries e
+				JOIN transactions t ON t.transaction_id = e.transaction_id
+				WHERE e.account_id = a.account_id AND substr(t.occured_at, 1, 4) = ?`
+			args = append(args, fmt.Sprintf("%04d", year))
+
+			if month > 0 {
+				query += ` AND substr(t.occured_at, 6, 2) = ?`
+				args = append(args, fmt.Sprintf("%02d", month))
+			}
+			query += `)`
+		}
+
+		query += ` ORDER BY a.account_name`
+
+		rows, err := es.db.QueryxContext(ctx, query, args...)
 		if err != nil {
 			yield(models.Account{}, ErrorQueryFailed.withErr(err))
 			return
@@ -340,12 +365,31 @@ func (es *ExpenseStore) entriesSeq(ctx context.Context, query string, args ...an
 const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at, a.currency`
 
 func (es *ExpenseStore) AllEntriesByAccount(ctx context.Context, account models.Account) iter.Seq2[models.Entry, error] {
-	return es.entriesSeq(ctx, `
-		SELECT `+entryColumns+`
+	return es.AllEntriesByAccountIn(ctx, account, 0, 0)
+}
+
+func (es *ExpenseStore) AllEntriesByAccountIn(ctx context.Context, account models.Account, year, month int) iter.Seq2[models.Entry, error] {
+	query := `
+		SELECT ` + entryColumns + `
 		FROM entries e
 		JOIN accounts a ON a.account_id = e.account_id
-		WHERE e.account_id = ? AND a.currency = ?
-		ORDER BY e.created_at, e.entry_id`, account.AccountID.String(), account.Currency)
+		JOIN transactions t ON t.transaction_id = e.transaction_id
+		WHERE e.account_id = ? AND a.currency = ?`
+	args := []any{account.AccountID.String(), account.Currency}
+
+	if year > 0 {
+		query += ` AND substr(t.occured_at, 1, 4) = ?`
+		args = append(args, fmt.Sprintf("%04d", year))
+
+		if month > 0 {
+			query += ` AND substr(t.occured_at, 6, 2) = ?`
+			args = append(args, fmt.Sprintf("%02d", month))
+		}
+	}
+
+	query += ` ORDER BY e.created_at, e.entry_id`
+
+	return es.entriesSeq(ctx, query, args...)
 }
 
 func (es *ExpenseStore) AllEntriesByTransaction(ctx context.Context, transaction models.Transaction, currency string) iter.Seq2[models.Entry, error] {

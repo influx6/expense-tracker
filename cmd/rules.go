@@ -1,39 +1,92 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"github.com/influx6/expense-tracker/internal/rules"
+	"github.com/influx6/expense-tracker/internal/store"
+	"github.com/influx6/expense-tracker/internal/wallet"
 )
 
-// rulesCmd represents the rules command
-var rulesCmd = &cobra.Command{
-	Use:   "rules",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+type ruleRunner func(ctx context.Context, wl *wallet.Wallet) (any, error)
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("rules called")
+var ruleRunners = map[string]ruleRunner{
+	"zerosum": func(ctx context.Context, wl *wallet.Wallet) (any, error) {
+		return (rules.ZeroSumBalance{}).Analyse(ctx, wl)
 	},
+	"wallet-summary": func(ctx context.Context, wl *wallet.Wallet) (any, error) {
+		return (rules.WalletSummaryRule{}).Analyse(ctx, wl)
+	},
+}
+
+var rulesCmd = &cobra.Command{
+	Use:   "rules [rule-name|list]",
+	Short: "Run a rule or list the available rules",
+	Args:  cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 || args[0] == "list" {
+			for _, name := range availableRules() {
+				fmt.Fprintln(cmd.OutOrStdout(), name)
+			}
+			return nil
+		}
+
+		name := args[0]
+		run, ok := ruleRunners[name]
+		if !ok {
+			return fmt.Errorf("unknown rule %q, available: %s", name, strings.Join(availableRules(), ", "))
+		}
+
+		dbPath, err := cmd.Flags().GetString("db")
+		if err != nil {
+			return err
+		}
+
+		ctx := cmd.Context()
+		expenseStore, err := store.SqliteExpenseStore(ctx, dbPath, 5000)
+		if err != nil {
+			return err
+		}
+
+		expenseWallet, err := wallet.NewWallet(ctx, expenseStore, defaultCurrency, defaultUserID)
+		if err != nil {
+			return err
+		}
+
+		result, err := run(ctx, expenseWallet)
+		if err != nil {
+			return err
+		}
+
+		out := cmd.OutOrStdout()
+		switch value := result.(type) {
+		case nil:
+			fmt.Fprintf(out, "%s: ok\n", name)
+		case *rules.WalletSummary:
+			printWalletSummary(cmd, expenseWallet.Currency, value)
+		default:
+			fmt.Fprintln(out, value)
+		}
+		return nil
+	},
+}
+
+func availableRules() []string {
+	names := make([]string, 0, len(ruleRunners))
+	for name := range ruleRunners {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func init() {
 	rootCmd.AddCommand(rulesCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// rulesCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// rulesCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rulesCmd.Flags().String("db", "expense-tracker.db", "SQLite database path")
 }

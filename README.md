@@ -6,6 +6,7 @@
   - [AI Disclaimer](#ai-disclaimer)
   - [Important Decisions](#important-decisions)
   - [CLI Commands](#cli-commands)
+    - [Add](#add)
     - [Load](#load)
     - [Summarize](#summarize)
     - [Rules](#rules)
@@ -39,17 +40,16 @@
 
 <!--toc:end-->
 
-This is a sample application built in Golang to demonstrate the development of an income and expense tracking CLI.
+This is a sample application built in Golang to demonstrate the development of an income and expense tracking CLI for education purposes.
 
-It features a very simple command interface, focused on supporting per user tracking, expense categories, a basic income
-tracking
+It features a very simple CommandLine Interface (CLI), focused on supporting a single user income and expense tracking journey. You can learn alot about double booking in accounting from this. ;)
 
 ## AI Disclaimer
 
 I used AI where it made sense selectively, such as:
 
 - Writing tests for established code and edgecases
-- Speeding through guided implementation steps after hand coding
+- Speeding through guided implementation steps after hand coding and detailed written specification you find in this readme.
 
 ## Important Decisions
 
@@ -71,47 +71,107 @@ I used AI where it made sense selectively, such as:
 
 ## CLI Commands
 
+Every command opens the SQLite database passed with `--db` (default `expense-tracker.db`). The CLI uses one fixed default user and HKD.
+
+### Add
+
+Add one entry from flags:
+
+```bash
+expense-tracker add \
+  --when 2026-01-15 \
+  --amount 42.50 \
+  --desc "lunch" \
+  --category food \
+  --type expense
+```
+
+```
+id: 5c1f4a2e-...
+entries: 2
+```
+
+Running the same entry again prints `already recorded`. The id is derived from `when`, `amount`, `category`, and `type`, so changing only `--desc` does not create a duplicate.
+
 ### Load
 
-Loads a giving provided CSV file into the tracker application. Internally we process, process and store the facts into a embedded sqlite database table
-and entirely use that to query and provide relevant expense reports.
+Import a CSV with columns `when,amount,desc,category,type`:
+
+```bash
+expense-tracker load --file samples/mixed.csv --invalid invalid.csv
+```
+
+```
+parsed: 80
+loaded: 80
+rejected: 20
+invalid rows written to: invalid.csv
+  1. 2026-05-01, 15.055, too precise, food, expense: ...
+  2. ...
+  ... and 15 more
+```
+
+- `parsed` — valid rows read from the file
+- `loaded` — transactions inserted; reloading the same content gives `loaded: 0`
+- `rejected` — invalid rows, written to the invalid file with a `reason` column; the first five are printed
 
 ### Summarize
 
-Returns a summarized month by month report of existing spending showing total income, expenses, expenses by categories per year, per month
-
-```
-tracker summarize
-```
-
-Get a specific month's tracking summary for a giving year:
+Overall summary:
 
 ```bash
-tracker summarize --year 2026 --month jan|january|01|1
+expense-tracker summarize
 ```
+
+Narrow to a year, then to a month within that year:
+
+```bash
+expense-tracker summarize --year 2026
+expense-tracker summarize --year 2026 --month 1
+```
+
+```
+Currency: HKD
+
+Totals:
+  Type            Debits (RECEIVED)       Credits (SENT)              Balance
+  Asset                   64,527.15            54,267.85            10,259.30
+  Liability                3,500.00             9,500.00            -6,000.00
+  Income                       0.00            55,027.15           -55,027.15
+  Expense                 50,767.85                 0.00            50,767.85
+
+Categories:
+  Type         Category              Debits (RECEIVED)       Credits (SENT)              Balance
+  Liability    bank                           1,000.00             3,000.00            -2,000.00
+  ...
+```
+
+`--month` requires `--year`.
 
 ### Rules
 
-Allows executing a specific rule implementation for a all periods or a specific time period (year and month required) to identify a specific
-sets of transactions that match specific criterias.
-
-Rules can be easily added in into [rules][./rules] and registers it with the [rules](./cmd/rules) command:
-cmd/rules.go
-
-```go
-RULES = []Rule {
-    ...,
-    MY_RULE,
-}
-```
-
-Then you can run your new rule:
+List the available rules:
 
 ```bash
-tracker rule MY_RULE
-tracker rule MY_RULE --year 2026
-tracker rule MY_RULE --year 2026 --month jan|january|01|1
+expense-tracker rules list
 ```
+
+```
+wallet-summary
+zerosum
+```
+
+Run a rule:
+
+```bash
+expense-tracker rules zerosum
+expense-tracker rules wallet-summary
+```
+
+- `zerosum` verifies that all account balances sum to zero.
+- `wallet-summary` prints the same report as `summarize`.
+
+New rules implement `wallet.ServiceRule[T]` and are registered in `cmd/rules.go`.
 
 ## Specifications: Assumptions, Laws, Invariants
 
@@ -234,7 +294,7 @@ As a expense tracker CLI, I as the user want to be able to load a csv of incomin
 From a single entry perspective: I should just be able to specify:
 
 ```bash
-cli record --when [Timestamp] --amount [AMOUNT] --desc [DESC] --category [category] --type=[enum(expense,income,transfer_in,transfer_out)]
+expense-tracker add --when [Timestamp] --amount [AMOUNT] --desc [DESC] --category [category] --type [enum(expense,income,transfer_in,transfer_out)]
 ```
 
 From a batch or multiple input perspective, it should evidently support a csv with the following format:

@@ -522,6 +522,119 @@ func TestAllAccounts(t *testing.T) {
 	}
 }
 
+func TestAllAccountsIn(t *testing.T) {
+	store, userID := newTestStore(t)
+	asset, expense := testAccounts(t, store, userID)
+	income, err := store.GetOrCreateAccount(t.Context(), "salary", models.IncomeAccount, userID, "HKD")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	january := testTransaction(userID)
+	january.OccuredAt = time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{january},
+		testEntryPair(t, january.TransactionID, asset.AccountID, expense.AccountID), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	february := testTransaction(userID)
+	february.OccuredAt = time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{february},
+		testEntryPair(t, february.TransactionID, income.AccountID, asset.AccountID), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	march := testTransaction(userID)
+	march.OccuredAt = time.Date(2027, 3, 5, 12, 0, 0, 0, time.UTC)
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{march},
+		testEntryPair(t, march.TransactionID, asset.AccountID, expense.AccountID), nil); err != nil {
+		t.Fatal(err)
+	}
+
+	accountsIn := func(year, month int) map[string]models.Account {
+		accounts := make(map[string]models.Account)
+		for account, err := range store.AllAccountsIn(t.Context(), userID, "HKD", year, month) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			accounts[string(account.AccountCategory)] = account
+		}
+		return accounts
+	}
+
+	balanceIn := func(year, month int) decimal.Decimal {
+		var total decimal.Decimal
+		for account, err := range store.AllAccountsIn(t.Context(), userID, "HKD", year, month) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			for entry, err := range store.AllEntriesByAccountIn(t.Context(), account, year, month) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				if entry.Direction == models.DestinationDirection {
+					total, err = total.Add(entry.Amount)
+				} else {
+					total, err = total.Sub(entry.Amount)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		return total
+	}
+
+	t.Run("year", func(t *testing.T) {
+		accounts := accountsIn(2026, 0)
+		if len(accounts) != 3 {
+			t.Fatalf("accounts = %d, want 3", len(accounts))
+		}
+		for _, name := range []string{"wallet", "food", "salary"} {
+			if _, ok := accounts[name]; !ok {
+				t.Errorf("account %q missing", name)
+			}
+		}
+		if balance := balanceIn(2026, 0); !balance.IsZero() {
+			t.Errorf("balance = %s, want 0", balance)
+		}
+	})
+
+	t.Run("year and month", func(t *testing.T) {
+		januaryAccounts := accountsIn(2026, 1)
+		if len(januaryAccounts) != 2 {
+			t.Fatalf("january accounts = %d, want 2", len(januaryAccounts))
+		}
+		if _, ok := januaryAccounts["salary"]; ok {
+			t.Errorf("salary is active in January")
+		}
+
+		februaryAccounts := accountsIn(2026, 2)
+		if len(februaryAccounts) != 2 {
+			t.Fatalf("february accounts = %d, want 2", len(februaryAccounts))
+		}
+		if _, ok := februaryAccounts["food"]; ok {
+			t.Errorf("food is active in February")
+		}
+
+		if balance := balanceIn(2026, 1); !balance.IsZero() {
+			t.Errorf("january balance = %s, want 0", balance)
+		}
+		if balance := balanceIn(2026, 2); !balance.IsZero() {
+			t.Errorf("february balance = %s, want 0", balance)
+		}
+	})
+
+	t.Run("periods without activity", func(t *testing.T) {
+		if balance := balanceIn(2027, 0); !balance.IsZero() {
+			t.Errorf("2027 balance = %s, want 0", balance)
+		}
+		if accounts := accountsIn(2025, 0); len(accounts) != 0 {
+			t.Errorf("2025 accounts = %d, want 0", len(accounts))
+		}
+	})
+}
+
 func TestInsertAllWithIdempotent(t *testing.T) {
 	store, userID := newTestStore(t)
 	asset, expense := testAccounts(t, store, userID)
