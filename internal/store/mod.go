@@ -151,7 +151,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		return models.Account{}, err
 	}
 
-	found, err := es.findAccount(category, accountType, userID)
+	found, err := es.FindAccount(category, accountType, userID)
 	if err == nil {
 		return found, nil
 	}
@@ -183,7 +183,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		return models.Account{}, ErrorInsert.withErr(err)
 	}
 
-	return es.findAccount(category, accountType, userID)
+	return es.FindAccount(category, accountType, userID)
 }
 
 type accountRow struct {
@@ -194,7 +194,7 @@ type accountRow struct {
 	CreatedAt   string `db:"created_at"`
 }
 
-func (es *ExpenseStore) findAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
+func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
 	var row accountRow
 
 	if err := es.db.Get(&row, `
