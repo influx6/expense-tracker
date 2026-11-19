@@ -56,7 +56,9 @@ I used AI where it made sense selectively, such as:
 
 2. Assets is singular, we do not differentiate different types of assets, cash or savings, everything is one asset account. So you cant borrow yourself from your savings.
 
-2. Transactions and entries are processed as a batch, this trades the atomicity for a single transaction + its entries to optimize storing a larger swat at once, failure to insert a batch fails the whole run/ingestion (its considered a terminal error).
+3. Transactions and entries are processed as a batch, this trades the atomicity for a single transaction + its entries to optimize storing a larger swat at once, failure to insert a batch fails the whole run/ingestion (its considered a terminal error).
+
+4. Sqlite is used as our record of storage, just, zero support for decimal without the [Decimal.c](https://www.sqlite.org/floatingpoint.html) extension, which I kept out to keep it basi.
 
 ## Assumptions
 
