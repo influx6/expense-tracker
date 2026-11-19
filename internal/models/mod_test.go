@@ -23,11 +23,11 @@ func mustDecimal(t *testing.T, s string) decimal.Decimal {
 
 func validAccount() models.Account {
 	return models.Account{
-		AccountID:   uuid.New(),
-		AccountName: "food",
-		AccountType: models.ExpenseAccount,
-		UserID:      uuid.New(),
-		Currency:    "HKD",
+		AccountID:       uuid.New(),
+		AccountCategory: "food",
+		AccountType:     models.ExpenseAccount,
+		UserID:          uuid.New(),
+		Currency:        "HKD",
 	}
 }
 
@@ -39,8 +39,8 @@ func TestAccountValidate(t *testing.T) {
 		{name: "valid", mutate: func(*models.Account) {}},
 		{name: "missing account id", mutate: func(a *models.Account) { a.AccountID = uuid.Nil() }},
 		{name: "missing user id", mutate: func(a *models.Account) { a.UserID = uuid.Nil() }},
-		{name: "uppercase name", mutate: func(a *models.Account) { a.AccountName = "Food" }},
-		{name: "name with digit", mutate: func(a *models.Account) { a.AccountName = "food2" }},
+		{name: "uppercase name", mutate: func(a *models.Account) { a.AccountCategory = "Food" }},
+		{name: "name with digit", mutate: func(a *models.Account) { a.AccountCategory = "food2" }},
 		{name: "unknown type", mutate: func(a *models.Account) { a.AccountType = models.AccountType("LOAN") }},
 	}
 

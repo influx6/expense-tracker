@@ -207,7 +207,7 @@ func TestParseMapValid(t *testing.T) {
 			if got := ev.Amount.String(); got != tc.wantAmt {
 				t.Errorf("amount = %s, want %s", got, tc.wantAmt)
 			}
-			if ev.Category != tc.wantCat {
+			if string(ev.Category) != tc.wantCat {
 				t.Errorf("category = %q, want %q", ev.Category, tc.wantCat)
 			}
 			if ev.Type != tc.wantType {

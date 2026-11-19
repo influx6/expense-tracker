@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 	"uuid"
 
@@ -148,9 +147,12 @@ func (es *ExpenseStore) createSchema() error {
 const defaultCurrency = "HKD"
 
 func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
-	accountName = strings.ToLower(accountName)
+	category, err := models.ToAccountCategory(accountName)
+	if err != nil {
+		return models.Account{}, err
+	}
 
-	found, err := es.findAccount(accountName, accountType, userID)
+	found, err := es.findAccount(category, accountType, userID)
 	if err == nil {
 		return found, nil
 	}
@@ -159,11 +161,11 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 	}
 
 	account := models.Account{
-		AccountID:   uuid.New(),
-		AccountName: accountName,
-		AccountType: accountType,
-		UserID:      userID,
-		Currency:    defaultCurrency,
+		AccountID:       uuid.New(),
+		AccountCategory: category,
+		AccountType:     accountType,
+		UserID:          userID,
+		Currency:        defaultCurrency,
 	}
 	if err := account.Validate(); err != nil {
 		return models.Account{}, err
@@ -174,7 +176,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		INSERT OR IGNORE INTO accounts (account_id, account_name, account_type, user_id, currency)
 		VALUES (?, ?, ?, ?, ?)`,
 		account.AccountID.String(),
-		account.AccountName,
+		string(account.AccountCategory),
 		string(account.AccountType),
 		account.UserID.String(),
 		account.Currency,
@@ -182,7 +184,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		return models.Account{}, ErrorInsert.withErr(err)
 	}
 
-	return es.findAccount(accountName, accountType, userID)
+	return es.findAccount(category, accountType, userID)
 }
 
 type accountRow struct {
@@ -193,14 +195,14 @@ type accountRow struct {
 	CreatedAt   string `db:"created_at"`
 }
 
-func (es *ExpenseStore) findAccount(accountName string, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
+func (es *ExpenseStore) findAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
 	var row accountRow
 
 	if err := es.db.Get(&row, `
 		SELECT account_id, account_name, account_type, currency, created_at
 		FROM accounts
 		WHERE user_id = ? AND account_name = ? AND account_type = ?`,
-		userID.String(), accountName, string(accountType),
+		userID.String(), string(category), string(accountType),
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return models.Account{}, ErrorAccountNotFound.withErr(err)
@@ -212,17 +214,21 @@ func (es *ExpenseStore) findAccount(accountName string, accountType models.Accou
 	if err != nil {
 		return models.Account{}, ErrorQueryFailed.withErr(err)
 	}
+	accountCategory, err := models.ToAccountCategory(row.AccountName)
+	if err != nil {
+		return models.Account{}, ErrorQueryFailed.withErr(err)
+	}
 	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
 	if err != nil {
 		return models.Account{}, ErrorQueryFailed.withErr(err)
 	}
 
 	return models.Account{
-		AccountID:   accountID,
-		AccountName: row.AccountName,
-		AccountType: models.AccountType(row.AccountType),
-		UserID:      userID,
-		Currency:    row.Currency,
-		CreatedAt:   createdAt,
+		AccountID:       accountID,
+		AccountCategory: accountCategory,
+		AccountType:     models.AccountType(row.AccountType),
+		UserID:          userID,
+		Currency:        row.Currency,
+		CreatedAt:       createdAt,
 	}, nil
 }

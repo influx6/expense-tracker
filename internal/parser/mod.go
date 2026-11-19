@@ -306,21 +306,22 @@ func normalizeAmount(intDigits, fraction string) string {
 	return intDigits + "." + fraction
 }
 
-func normalizeCategory(raw string, reservedCategories []string) (string, error) {
-	clean := strings.ToLower(strings.TrimSpace(raw))
-	clean = strings.ReplaceAll(clean, " ", "_")
-	if clean == "" {
+func normalizeCategory(raw string, reservedCategories []string) (models.AccountCategory, error) {
+	if strings.TrimSpace(raw) == "" {
 		return "", ErrorMissingCategory
 	}
-	if !models.AccountNamePattern.MatchString(clean) {
-		return "", ErrorInvalidCategory.withErr(fmt.Errorf("%q", raw))
+
+	category, err := models.ToAccountCategory(raw)
+	if err != nil {
+		return "", ErrorInvalidCategory.withErr(err)
 	}
+
 	if slices.ContainsFunc(reservedCategories, func(reserved string) bool {
-		return strings.ToLower(strings.TrimSpace(reserved)) == clean
+		return strings.ToLower(strings.TrimSpace(reserved)) == string(category)
 	}) {
-		return "", ErrorReservedCategory.withErr(fmt.Errorf("%q", clean))
+		return "", ErrorReservedCategory.withErr(fmt.Errorf("%q", category))
 	}
-	return clean, nil
+	return category, nil
 }
 
 func parseEventType(raw string) (models.EventType, error) {

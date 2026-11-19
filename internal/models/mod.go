@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 	"uuid"
 
@@ -65,12 +66,38 @@ const (
 	EventTransferOut EventType = "transfer_out"
 )
 
+// AccountNamePattern matches valid account names: lowercase letters and underscores.
+var AccountNamePattern = regexp.MustCompile(`^[a-z_]+$`)
+
+type AccountCategory string
+
+func (t AccountCategory) Validate() error {
+	if !AccountNamePattern.MatchString(string(t)) {
+		return InvalidAccount.withErr(fmt.Errorf("account_name %q must be lowercase letters and underscores", string(t)))
+	}
+	return nil
+}
+
+// ToAccountCategory is the central constructor for an AccountCategory. It
+// lowercases the name, replaces spaces with underscores, and validates it.
+func ToAccountCategory(raw string) (AccountCategory, error) {
+	name := strings.ReplaceAll(strings.ToLower(strings.TrimSpace(raw)), " ", "_")
+	if name == "" {
+		return "", InvalidAccount.withErr(fmt.Errorf("missing category"))
+	}
+	category := AccountCategory(name)
+	if err := category.Validate(); err != nil {
+		return "", err
+	}
+	return category, nil
+}
+
 // TransactionEvent is the clean domain value object passed into Wallet.Apply.
 type TransactionEvent struct {
 	OccuredAt time.Time
 	Amount    decimal.Decimal
 	Desc      string
-	Category  string // normalized: lowercase + _ only
+	Category  AccountCategory // normalized: lowercase + _ only
 	Type      EventType
 }
 
@@ -104,16 +131,13 @@ const (
 )
 
 type Account struct {
-	AccountID   uuid.UUID
-	AccountName string
-	AccountType AccountType
-	UserID      uuid.UUID
-	Currency    string
-	CreatedAt   time.Time
+	AccountID       uuid.UUID
+	AccountCategory AccountCategory
+	AccountType     AccountType
+	UserID          uuid.UUID
+	Currency        string
+	CreatedAt       time.Time
 }
-
-// AccountNamePattern matches valid account names: lowercase letters and underscores.
-var AccountNamePattern = regexp.MustCompile(`^[a-z_]+$`)
 
 func (a Account) Validate() error {
 	if a.AccountID == uuid.Nil() {
@@ -122,8 +146,8 @@ func (a Account) Validate() error {
 	if a.UserID == uuid.Nil() {
 		return InvalidAccount.withErr(fmt.Errorf("missing user_id"))
 	}
-	if !AccountNamePattern.MatchString(a.AccountName) {
-		return InvalidAccount.withErr(fmt.Errorf("account_name %q must be lowercase letters and underscores", a.AccountName))
+	if err := a.AccountCategory.Validate(); err != nil {
+		return err
 	}
 	switch a.AccountType {
 	case AssetAccount, LiabilityAccount, IncomeAccount, ExpenseAccount:
@@ -190,14 +214,14 @@ func ValidateTransactionEntries(source Entry, destination Entry) error {
 	if sourceValidationErr := source.Validate(); sourceValidationErr != nil {
 		return sourceValidationErr
 	}
-	if destValidationErr := source.Validate(); destValidationErr != nil {
+	if destValidationErr := destination.Validate(); destValidationErr != nil {
 		return destValidationErr
 	}
 	if source.Direction != SourceDirection {
 		return InvalidEntries.withErr(fmt.Errorf("source Entry as wrong direction: %q", source.Direction))
 	}
 	if destination.Direction != DestinationDirection {
-		return InvalidEntries.withErr(fmt.Errorf("destination Entry as wrong direction: %q", source.Direction))
+		return InvalidEntries.withErr(fmt.Errorf("destination Entry as wrong direction: %q", destination.Direction))
 	}
 	if source.TransactionID != destination.TransactionID {
 		return InvalidEntries.withErr(fmt.Errorf("entries belong to different transactions"))
