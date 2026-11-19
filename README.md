@@ -53,13 +53,21 @@ I used AI where it made sense selectively, such as:
 
 ## Important Decisions
 
+1. The CLI is built for the purpose of working with a static user and currency, though I have built it in such a way, a wallet can be created with a different currency with all records using that as their currency. 
+
+1. Multiple wallet per user is not implemented nor possible, you can have theoretically have multiple users with a wallet of a different currency but its not supported from the CLI.
+
+1. I chose to store the refined data into sqlite, easier to reason and enforce certain qualities and lower certain checks to the store layer to keep the code simpler, though storing in a plain map would be even more simpler just alot more noise in application code (noise as in bound checks, guard checks, concurrency checks).
+
 1. The tests are kept as simple as possible, and I selected to use AI to generate these, its more labour that actual work since the core is the plan first then the code.
 
-2. Assets is singular, we do not differentiate different types of assets, cash or savings, everything is one asset account. So you cant borrow yourself from your savings.
+1. Assets is singular, we do not differentiate different types of assets, cash or savings, everything is one asset account. So you cant borrow yourself from your savings.
 
-3. Transactions and entries are processed as a batch, this trades the atomicity for a single transaction + its entries to optimize storing a larger swat at once, failure to insert a batch fails the whole run/ingestion (its considered a terminal error).
+1. Transactions and entries are processed as a batch, this trades the atomicity for a single transaction + its entries to optimize storing a larger swat at once, failure to insert a batch fails the whole run/ingestion (its considered a terminal error).
 
-4. Sqlite is used as our record of storage, just, zero support for decimal without the [Decimal.c](https://www.sqlite.org/floatingpoint.html) extension, which I kept out to keep it basi.
+1. Sqlite is used as our record of storage, just, zero support for decimal without the [Decimal.c](https://www.sqlite.org/floatingpoint.html) extension, which I kept out to keep it basi.
+
+1. A csv file is made idempotent as much as is possible, attempting to load the same file without any big material change to rows should have same net effect and zero additional records, changing `description` will never have any net effect.
 
 ## CLI Commands
 
