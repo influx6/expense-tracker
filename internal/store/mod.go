@@ -366,6 +366,51 @@ func (es *ExpenseStore) AllEntries(userID uuid.UUID, currency string) iter.Seq2[
 		ORDER BY e.created_at, e.entry_id`, userID.String(), currency)
 }
 
+func (es *ExpenseStore) SumEntryBalance(queryer sqlx.Queryer, userID uuid.UUID, currency string) (decimal.Decimal, error) {
+	rows, err := queryer.Queryx(`
+		SELECT e.direction, e.amount
+		FROM entries e
+		JOIN transactions t ON t.transaction_id = e.transaction_id
+		JOIN accounts a ON a.account_id = e.account_id
+		WHERE t.user_id = ? AND a.currency = ?`, userID.String(), currency)
+	if err != nil {
+		return decimal.Decimal{}, ErrorQueryFailed.withErr(err)
+	}
+	defer rows.Close()
+
+	var total decimal.Decimal
+	for rows.Next() {
+		var direction, amount string
+		if err := rows.Scan(&direction, &amount); err != nil {
+			return decimal.Decimal{}, ErrorQueryFailed.withErr(err)
+		}
+
+		value, err := decimal.Parse(amount)
+		if err != nil {
+			return decimal.Decimal{}, ErrorQueryFailed.withErr(err)
+		}
+		switch models.Direction(direction) {
+		case models.DestinationDirection:
+			total, err = total.Add(value)
+		case models.SourceDirection:
+			total, err = total.Sub(value)
+		default:
+			return decimal.Decimal{}, ErrorQueryFailed.withErr(fmt.Errorf("unknown direction %q", direction))
+		}
+		if err != nil {
+			return decimal.Decimal{}, ErrorQueryFailed.withErr(err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return decimal.Decimal{}, ErrorQueryFailed.withErr(err)
+	}
+	return total, nil
+}
+
+func (es *ExpenseStore) ZeroSum(userID uuid.UUID, currency string) (decimal.Decimal, error) {
+	return es.SumEntryBalance(es.db, userID, currency)
+}
+
 func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
 	var row accountRow
 

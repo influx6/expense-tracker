@@ -2,7 +2,9 @@ package wallet_test
 
 import (
 	"errors"
+	"fmt"
 	"maps"
+	"math/rand"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,7 +18,7 @@ import (
 	"github.com/influx6/expense-tracker/internal/wallet"
 )
 
-func newTestWallet(t *testing.T) (*wallet.Wallet, string) {
+func newTestWallet(t *testing.T) (*wallet.Wallet, string, *store.ExpenseStore) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "test.db")
@@ -28,7 +30,7 @@ func newTestWallet(t *testing.T) (*wallet.Wallet, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return w, path
+	return w, path, es
 }
 
 func openDB(t *testing.T, path string) *sqlx.DB {
@@ -40,6 +42,16 @@ func openDB(t *testing.T, path string) *sqlx.DB {
 	}
 	t.Cleanup(func() { db.Close() })
 	return db
+}
+
+func countRows(t *testing.T, db *sqlx.DB, table string) int {
+	t.Helper()
+
+	var count int
+	if err := db.Get(&count, "SELECT COUNT(*) FROM "+table); err != nil {
+		t.Fatal(err)
+	}
+	return count
 }
 
 type AccountSummary struct {
@@ -165,7 +177,7 @@ func testEvent(t *testing.T, eventType models.EventType, amount, category string
 
 func TestApply(t *testing.T) {
 	t.Run("applies a batch of valid events", func(t *testing.T) {
-		w, path := newTestWallet(t)
+		w, path, _ := newTestWallet(t)
 		events := []models.TransactionEvent{
 			testEvent(t, models.EventIncome, "100.00", "salary"),
 			testEvent(t, models.EventExpense, "20.00", "food"),
@@ -238,7 +250,7 @@ func TestApply(t *testing.T) {
 	})
 
 	t.Run("rolls back the batch when an event is invalid", func(t *testing.T) {
-		w, path := newTestWallet(t)
+		w, path, _ := newTestWallet(t)
 		amount, err := decimal.Parse("10.00")
 		if err != nil {
 			t.Fatal(err)
@@ -270,4 +282,58 @@ func TestApply(t *testing.T) {
 			t.Errorf("account summaries = %v, want %v", got, wantSummaries)
 		}
 	})
+}
+
+func TestApplyAlwaysBalances(t *testing.T) {
+	rng := rand.New(rand.NewSource(1))
+	types := []models.EventType{
+		models.EventIncome,
+		models.EventExpense,
+		models.EventTransferIn,
+		models.EventTransferOut,
+	}
+	categories := []string{"salary", "bonus", "food", "rent", "friend_loan", "bank"}
+
+	for i := 0; i < 50; i++ {
+		t.Run(fmt.Sprintf("case_%d", i), func(t *testing.T) {
+			w, path, es := newTestWallet(t)
+
+			count := 1 + rng.Intn(10)
+			events := make([]models.TransactionEvent, count)
+			for j := range events {
+				cents := rng.Intn(1_000_000) + 1
+				amount, err := decimal.Parse(fmt.Sprintf("%d.%02d", cents/100, cents%100))
+				if err != nil {
+					t.Fatal(err)
+				}
+				events[j] = models.TransactionEvent{
+					OccuredAt: time.Now().UTC(),
+					Amount:    amount,
+					Desc:      "generated",
+					Category:  models.AccountCategory(categories[rng.Intn(len(categories))]),
+					Type:      types[rng.Intn(len(types))],
+				}
+			}
+
+			if err := w.Apply(events); err != nil {
+				t.Fatalf("Apply: %v", err)
+			}
+
+			balance, err := es.ZeroSum(w.UserId, w.Currency)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !balance.IsZero() {
+				t.Errorf("balance = %s, want 0", balance)
+			}
+
+			db := openDB(t, path)
+			if got := countRows(t, db, "transactions"); got != count {
+				t.Errorf("transactions = %d, want %d", got, count)
+			}
+			if got := countRows(t, db, "entries"); got != 2*count {
+				t.Errorf("entries = %d, want %d", got, 2*count)
+			}
+		})
+	}
 }

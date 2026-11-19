@@ -20,6 +20,7 @@ const (
 	CodeAccountError     WalletErrorCode = "ACCOUNT_ERROR"
 	CodeInvalidEntries   WalletErrorCode = "INVALID_ENTRIES"
 	CodeCurrencyMismatch WalletErrorCode = "CURRENCY_MISMATCH"
+	CodeUnbalanced       WalletErrorCode = "UNBALANCED"
 )
 
 type WalletError struct {
@@ -59,11 +60,12 @@ var (
 	ErrorAccountError     = WalletError{Code: CodeAccountError, Label: "failed to prepare account"}
 	ErrorInvalidEntries   = WalletError{Code: CodeInvalidEntries, Label: "invalid transaction entries", IsTerminal: true}
 	ErrorCurrencyMismatch = WalletError{Code: CodeCurrencyMismatch, Label: "accounts have different currencies", IsTerminal: true}
+	ErrorUnbalanced       = WalletError{Code: CodeUnbalanced, Label: "entries do not sum to zero", IsTerminal: true}
 )
 
 type Wallet struct {
-	userId       uuid.UUID
-	currency     string
+	UserId       uuid.UUID
+	Currency     string
 	AssetAccount *models.Account
 	ExpenseStore *store.ExpenseStore
 }
@@ -79,7 +81,7 @@ func NewWallet(es *store.ExpenseStore, currency string, userId uuid.UUID) (*Wall
 		return nil, ErrorAccountError.withErr(getAccountErr)
 	}
 
-	return &Wallet{userId: userId, currency: currency, AssetAccount: &assetAccount, ExpenseStore: es}, nil
+	return &Wallet{UserId: userId, Currency: currency, AssetAccount: &assetAccount, ExpenseStore: es}, nil
 }
 
 func (w *Wallet) Apply(events []models.TransactionEvent) error {
@@ -93,7 +95,7 @@ func (w *Wallet) Apply(events []models.TransactionEvent) error {
 		}
 
 		transactions = append(transactions, models.Transaction{
-			UserID:        w.userId,
+			UserID:        w.UserId,
 			TransactionID: change.TransactionId,
 			Description:   change.Desc,
 			OccuredAt:     change.OccuredAt,
@@ -109,8 +111,13 @@ func (w *Wallet) Apply(events []models.TransactionEvent) error {
 	}
 
 	return w.ExpenseStore.InsertAllWith(transactions, entries, func(tx *sqlx.Tx) error {
-		// we perform double accounting validation here that
-		// all SUM(ASSET.entries) + SUM(EXPENSE.entries) + SUM(LIABILTY.entries) + SUM(INCOME.entries) == 0
+		balance, err := w.ExpenseStore.SumEntryBalance(tx, w.UserId, w.Currency)
+		if err != nil {
+			return err
+		}
+		if !balance.IsZero() {
+			return ErrorUnbalanced.withErr(fmt.Errorf("entry balance = %s", balance))
+		}
 		return nil
 	})
 }
@@ -163,7 +170,7 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (walletChangeRequest, error) {
 	changeRequest := walletChangeRequest{
 		Desc:          event.Desc,
-		UserId:        w.userId,
+		UserId:        w.UserId,
 		TransactionId: uuid.NewV7(),
 		OccuredAt:     event.OccuredAt.UTC(),
 		Amount:        event.Amount,
@@ -171,7 +178,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 
 	switch event.Type {
 	case models.EventExpense:
-		destAccount, destAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.ExpenseAccount, w.userId, w.currency)
+		destAccount, destAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.ExpenseAccount, w.UserId, w.Currency)
 		if destAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(destAccountErr)
 		}
@@ -180,7 +187,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 		changeRequest.DestAccount = destAccount
 		return changeRequest, nil
 	case models.EventIncome:
-		incomeAccount, incomeAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.IncomeAccount, w.userId, w.currency)
+		incomeAccount, incomeAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.IncomeAccount, w.UserId, w.Currency)
 		if incomeAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(incomeAccountErr)
 		}
@@ -191,7 +198,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 	case models.EventTransferIn:
 		// transfers in increases assets but they are liabilities as well
 		// that will need to be settled, but they do increase asset value.
-		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId, w.currency)
+		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.UserId, w.Currency)
 		if liabilityAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
@@ -201,7 +208,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 		return changeRequest, nil
 	case models.EventTransferOut:
 		// transfers out decreases asset value but also decreases your libability.
-		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.userId, w.currency)
+		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.UserId, w.Currency)
 		if liabilityAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}

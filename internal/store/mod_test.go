@@ -439,3 +439,85 @@ func TestEntryIterators(t *testing.T) {
 		}
 	})
 }
+
+func TestZeroSum(t *testing.T) {
+	t.Run("balanced entries", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		txn := testTransaction(userID)
+		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+		if err := store.InsertAllWith([]models.Transaction{txn}, entries, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		balance, err := store.ZeroSum(userID, "HKD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !balance.IsZero() {
+			t.Errorf("balance = %s, want 0", balance)
+		}
+	})
+
+	t.Run("unbalanced entries", func(t *testing.T) {
+		store, userID := newTestStore(t)
+		asset, expense := testAccounts(t, store, userID)
+		txn := testTransaction(userID)
+		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+
+		amount, err := decimal.Parse("9.00")
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[1].Amount = amount
+
+		if err := store.InsertAllWith([]models.Transaction{txn}, entries, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		balance, err := store.ZeroSum(userID, "HKD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := decimal.Parse("-1.00")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if balance.Cmp(want) != 0 {
+			t.Errorf("balance = %s, want %s", balance, want)
+		}
+	})
+}
+
+func TestAllAccounts(t *testing.T) {
+	store, userID := newTestStore(t)
+	asset, expense := testAccounts(t, store, userID)
+
+	accounts := make(map[uuid.UUID]models.Account)
+	for account, err := range store.AllAccounts(userID, "HKD") {
+		if err != nil {
+			t.Fatal(err)
+		}
+		accounts[account.AccountID] = account
+	}
+	if len(accounts) != 2 {
+		t.Fatalf("accounts = %d, want 2", len(accounts))
+	}
+	if _, ok := accounts[asset.AccountID]; !ok {
+		t.Errorf("asset account missing")
+	}
+	if _, ok := accounts[expense.AccountID]; !ok {
+		t.Errorf("expense account missing")
+	}
+
+	var other int
+	for _, err := range store.AllAccounts(userID, "USD") {
+		if err != nil {
+			t.Fatal(err)
+		}
+		other++
+	}
+	if other != 0 {
+		t.Errorf("USD accounts = %d, want 0", other)
+	}
+}
