@@ -22,11 +22,11 @@ func newTestWallet(t *testing.T) (*wallet.Wallet, string, *store.ExpenseStore) {
 	t.Helper()
 
 	path := filepath.Join(t.TempDir(), "test.db")
-	es, err := store.SqliteExpenseStore(path, 5000)
+	es, err := store.SqliteExpenseStore(t.Context(), path, 5000)
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, err := wallet.NewWallet(es, "HKD", uuid.New())
+	w, err := wallet.NewWallet(t.Context(), es, "HKD", uuid.New())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestApply(t *testing.T) {
 			testEvent(t, models.EventTransferOut, "10.00", "friend_loan"),
 		}
 
-		if err := w.Apply(events); err != nil {
+		if err := w.Apply(t.Context(), events); err != nil {
 			t.Fatalf("Apply: %v", err)
 		}
 
@@ -267,7 +267,7 @@ func TestApply(t *testing.T) {
 			},
 		}
 
-		err = w.Apply(events)
+		err = w.Apply(t.Context(), events)
 		if !errors.Is(err, wallet.ErrorInvalidEvent) {
 			t.Fatalf("error = %v, want wallet.ErrorInvalidEvent", err)
 		}
@@ -315,11 +315,11 @@ func TestApplyAlwaysBalances(t *testing.T) {
 				}
 			}
 
-			if err := w.Apply(events); err != nil {
+			if err := w.Apply(t.Context(), events); err != nil {
 				t.Fatalf("Apply: %v", err)
 			}
 
-			balance, err := es.ZeroSum(w.UserId, w.Currency)
+			balance, err := es.ZeroSum(t.Context(), w.UserId, w.Currency)
 			if err != nil {
 				t.Fatal(err)
 			}

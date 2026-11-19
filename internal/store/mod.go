@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -77,7 +78,7 @@ type ExpenseStore struct {
 	db *sqlx.DB
 }
 
-func SqliteExpenseStore(dbPath string, waitTimeout uint32) (*ExpenseStore, error) {
+func SqliteExpenseStore(ctx context.Context, dbPath string, waitTimeout uint32) (*ExpenseStore, error) {
 	dsn := fmt.Sprintf("file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(%d)&_pragma=foreign_keys(1)", dbPath, waitTimeout)
 
 	db, openErr := sqlx.Open("sqlite", dsn)
@@ -86,12 +87,12 @@ func SqliteExpenseStore(dbPath string, waitTimeout uint32) (*ExpenseStore, error
 	}
 
 	// check db actually is responding
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
 
-	var store, err = newExpenseStore(db)
+	var store, err = newExpenseStore(ctx, db)
 	if err != nil {
 		_ = db.Close()
 		return nil, err
@@ -100,17 +101,17 @@ func SqliteExpenseStore(dbPath string, waitTimeout uint32) (*ExpenseStore, error
 	return store, nil
 }
 
-func newExpenseStore(db *sqlx.DB) (*ExpenseStore, error) {
+func newExpenseStore(ctx context.Context, db *sqlx.DB) (*ExpenseStore, error) {
 	store := &ExpenseStore{db}
-	if err := store.createSchema(); err != nil {
+	if err := store.createSchema(ctx); err != nil {
 		return nil, err
 	}
 
 	return store, nil
 }
 
-func (es *ExpenseStore) createSchema() error {
-	if _, err := es.db.Exec(`
+func (es *ExpenseStore) createSchema(ctx context.Context) error {
+	if _, err := es.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS accounts (
 			account_id TEXT PRIMARY KEY,
 			account_name TEXT NOT NULL,
@@ -152,13 +153,13 @@ func (es *ExpenseStore) createSchema() error {
 	return nil
 }
 
-func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType models.AccountType, userID uuid.UUID, currency string) (models.Account, error) {
+func (es *ExpenseStore) GetOrCreateAccount(ctx context.Context, accountName string, accountType models.AccountType, userID uuid.UUID, currency string) (models.Account, error) {
 	category, err := models.ToAccountCategory(accountName)
 	if err != nil {
 		return models.Account{}, err
 	}
 
-	found, err := es.FindAccount(category, accountType, userID)
+	found, err := es.FindAccount(ctx, category, accountType, userID)
 	if err == nil {
 		return found, nil
 	}
@@ -178,7 +179,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 	}
 
 	// Ignore only a concurrent insert with the same unique key.
-	if _, err := es.db.Exec(`
+	if _, err := es.db.ExecContext(ctx, `
 		INSERT INTO accounts (account_id, account_name, account_type, user_id, currency)
 		VALUES (?, ?, ?, ?, ?)
 		ON CONFLICT (user_id, account_name, account_type) DO NOTHING`,
@@ -191,7 +192,7 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		return models.Account{}, ErrorInsert.withErr(err)
 	}
 
-	return es.FindAccount(category, accountType, userID)
+	return es.FindAccount(ctx, category, accountType, userID)
 }
 
 type accountRow struct {
@@ -226,9 +227,9 @@ func (r accountRow) toAccount(userID uuid.UUID) (models.Account, error) {
 	}, nil
 }
 
-func (es *ExpenseStore) AllAccounts(userID uuid.UUID, currency string) iter.Seq2[models.Account, error] {
+func (es *ExpenseStore) AllAccounts(ctx context.Context, userID uuid.UUID, currency string) iter.Seq2[models.Account, error] {
 	return func(yield func(models.Account, error) bool) {
-		rows, err := es.db.Queryx(`
+		rows, err := es.db.QueryxContext(ctx, `
 			SELECT account_id, account_name, account_type, currency, created_at
 			FROM accounts
 			WHERE user_id = ? AND currency = ?`, userID.String(), currency)
@@ -306,9 +307,9 @@ func (r entryRow) toEntry() (models.Entry, error) {
 	return entry, nil
 }
 
-func (es *ExpenseStore) entriesSeq(query string, args ...any) iter.Seq2[models.Entry, error] {
+func (es *ExpenseStore) entriesSeq(ctx context.Context, query string, args ...any) iter.Seq2[models.Entry, error] {
 	return func(yield func(models.Entry, error) bool) {
-		rows, err := es.db.Queryx(query, args...)
+		rows, err := es.db.QueryxContext(ctx, query, args...)
 		if err != nil {
 			yield(models.Entry{}, ErrorQueryFailed.withErr(err))
 			return
@@ -338,8 +339,8 @@ func (es *ExpenseStore) entriesSeq(query string, args ...any) iter.Seq2[models.E
 
 const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at, a.currency`
 
-func (es *ExpenseStore) AllEntriesByAccount(account models.Account) iter.Seq2[models.Entry, error] {
-	return es.entriesSeq(`
+func (es *ExpenseStore) AllEntriesByAccount(ctx context.Context, account models.Account) iter.Seq2[models.Entry, error] {
+	return es.entriesSeq(ctx, `
 		SELECT `+entryColumns+`
 		FROM entries e
 		JOIN accounts a ON a.account_id = e.account_id
@@ -347,8 +348,8 @@ func (es *ExpenseStore) AllEntriesByAccount(account models.Account) iter.Seq2[mo
 		ORDER BY e.created_at, e.entry_id`, account.AccountID.String(), account.Currency)
 }
 
-func (es *ExpenseStore) AllEntriesByTransaction(transaction models.Transaction, currency string) iter.Seq2[models.Entry, error] {
-	return es.entriesSeq(`
+func (es *ExpenseStore) AllEntriesByTransaction(ctx context.Context, transaction models.Transaction, currency string) iter.Seq2[models.Entry, error] {
+	return es.entriesSeq(ctx, `
 		SELECT `+entryColumns+`
 		FROM entries e
 		JOIN accounts a ON a.account_id = e.account_id
@@ -356,8 +357,8 @@ func (es *ExpenseStore) AllEntriesByTransaction(transaction models.Transaction, 
 		ORDER BY e.created_at, e.entry_id`, transaction.TransactionID.String(), currency)
 }
 
-func (es *ExpenseStore) AllEntries(userID uuid.UUID, currency string) iter.Seq2[models.Entry, error] {
-	return es.entriesSeq(`
+func (es *ExpenseStore) AllEntries(ctx context.Context, userID uuid.UUID, currency string) iter.Seq2[models.Entry, error] {
+	return es.entriesSeq(ctx, `
 		SELECT `+entryColumns+`
 		FROM entries e
 		JOIN transactions t ON t.transaction_id = e.transaction_id
@@ -366,8 +367,8 @@ func (es *ExpenseStore) AllEntries(userID uuid.UUID, currency string) iter.Seq2[
 		ORDER BY e.created_at, e.entry_id`, userID.String(), currency)
 }
 
-func (es *ExpenseStore) SumEntryBalance(queryer sqlx.Queryer, userID uuid.UUID, currency string) (decimal.Decimal, error) {
-	rows, err := queryer.Queryx(`
+func (es *ExpenseStore) SumEntryBalance(ctx context.Context, queryer sqlx.QueryerContext, userID uuid.UUID, currency string) (decimal.Decimal, error) {
+	rows, err := queryer.QueryxContext(ctx, `
 		SELECT e.direction, e.amount
 		FROM entries e
 		JOIN transactions t ON t.transaction_id = e.transaction_id
@@ -407,14 +408,14 @@ func (es *ExpenseStore) SumEntryBalance(queryer sqlx.Queryer, userID uuid.UUID, 
 	return total, nil
 }
 
-func (es *ExpenseStore) ZeroSum(userID uuid.UUID, currency string) (decimal.Decimal, error) {
-	return es.SumEntryBalance(es.db, userID, currency)
+func (es *ExpenseStore) ZeroSum(ctx context.Context, userID uuid.UUID, currency string) (decimal.Decimal, error) {
+	return es.SumEntryBalance(ctx, es.db, userID, currency)
 }
 
-func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
+func (es *ExpenseStore) FindAccount(ctx context.Context, category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
 	var row accountRow
 
-	if err := es.db.Get(&row, `
+	if err := es.db.GetContext(ctx, &row, `
 		SELECT account_id, account_name, account_type, currency, created_at
 		FROM accounts
 		WHERE user_id = ? AND account_name = ? AND account_type = ?`,
@@ -429,9 +430,9 @@ func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType
 	return row.toAccount(userID)
 }
 
-func (es *ExpenseStore) InsertAllWith(transactions []models.Transaction, entries []models.Entry, after func(tx *sqlx.Tx) error) error {
-	return es.withTx(func(tx *sqlx.Tx) error {
-		if err := insertTransactionsAndEntries(tx, transactions, entries); err != nil {
+func (es *ExpenseStore) InsertAllWith(ctx context.Context, transactions []models.Transaction, entries []models.Entry, after func(tx *sqlx.Tx) error) error {
+	return es.withTx(ctx, func(tx *sqlx.Tx) error {
+		if err := insertTransactionsAndEntries(ctx, tx, transactions, entries); err != nil {
 			return err
 		}
 		if after != nil {
@@ -441,7 +442,7 @@ func (es *ExpenseStore) InsertAllWith(transactions []models.Transaction, entries
 	})
 }
 
-func insertTransactionsAndEntries(tx *sqlx.Tx, transactions []models.Transaction, entries []models.Entry) error {
+func insertTransactionsAndEntries(ctx context.Context, tx *sqlx.Tx, transactions []models.Transaction, entries []models.Entry) error {
 	if len(entries) != 2*len(transactions) {
 		return ErrorEntryCountMismatch.withErr(fmt.Errorf(
 			"%d transactions require %d entries, got %d",
@@ -449,14 +450,14 @@ func insertTransactionsAndEntries(tx *sqlx.Tx, transactions []models.Transaction
 		))
 	}
 
-	if err := insertTransactions(tx, transactions); err != nil {
+	if err := insertTransactions(ctx, tx, transactions); err != nil {
 		return err
 	}
-	return insertEntries(tx, entries)
+	return insertEntries(ctx, tx, entries)
 }
 
-func insertTransactions(tx *sqlx.Tx, transactions []models.Transaction) error {
-	stmt, err := tx.Preparex(`
+func insertTransactions(ctx context.Context, tx *sqlx.Tx, transactions []models.Transaction) error {
+	stmt, err := tx.PreparexContext(ctx, `
 		INSERT INTO transactions (transaction_id, user_id, description, occured_at)
 		VALUES (?, ?, ?, ?)`)
 	if err != nil {
@@ -480,8 +481,8 @@ func insertTransactions(tx *sqlx.Tx, transactions []models.Transaction) error {
 	return nil
 }
 
-func insertEntries(tx *sqlx.Tx, entries []models.Entry) error {
-	stmt, err := tx.Preparex(`
+func insertEntries(ctx context.Context, tx *sqlx.Tx, entries []models.Entry) error {
+	stmt, err := tx.PreparexContext(ctx, `
 		INSERT INTO entries (entry_id, amount, transaction_id, account_id, direction)
 		VALUES (?, ?, ?, ?, ?)`)
 	if err != nil {
@@ -495,7 +496,7 @@ func insertEntries(tx *sqlx.Tx, entries []models.Entry) error {
 		}
 
 		var accountCurrency string
-		if err := tx.Get(&accountCurrency, `SELECT currency FROM accounts WHERE account_id = ?`, e.AccountID.String()); err != nil {
+		if err := tx.GetContext(ctx, &accountCurrency, `SELECT currency FROM accounts WHERE account_id = ?`, e.AccountID.String()); err != nil {
 			return ErrorInsert.withErr(err)
 		}
 		if accountCurrency != e.Currency {
@@ -518,8 +519,8 @@ func insertEntries(tx *sqlx.Tx, entries []models.Entry) error {
 	return nil
 }
 
-func (es *ExpenseStore) withTx(fn func(*sqlx.Tx) error) error {
-	tx, err := es.db.Beginx()
+func (es *ExpenseStore) withTx(ctx context.Context, fn func(*sqlx.Tx) error) error {
+	tx, err := es.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return ErrorTransactionFailed.withErr(err)
 	}

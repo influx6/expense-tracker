@@ -18,7 +18,7 @@ import (
 func newTestStore(t *testing.T) (*ExpenseStore, uuid.UUID) {
 	t.Helper()
 
-	store, err := SqliteExpenseStore(filepath.Join(t.TempDir(), "test.db"), 5000)
+	store, err := SqliteExpenseStore(t.Context(), filepath.Join(t.TempDir(), "test.db"), 5000)
 	if err != nil {
 		t.Fatalf("SqliteExpenseStore: %v", err)
 	}
@@ -31,7 +31,7 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("creates an account", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		account, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
+		account, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -46,11 +46,11 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("returns the existing account", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		first, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
+		first, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		second, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
+		second, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -70,11 +70,11 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("creates a separate account per type", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
+		expense, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		income, err := store.GetOrCreateAccount("food", models.IncomeAccount, userID, "HKD")
+		income, err := store.GetOrCreateAccount(t.Context(), "food", models.IncomeAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -86,11 +86,11 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("matches names regardless of case", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		lower, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
+		lower, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		mixed, err := store.GetOrCreateAccount("Food", models.ExpenseAccount, userID, "HKD")
+		mixed, err := store.GetOrCreateAccount(t.Context(), "Food", models.ExpenseAccount, userID, "HKD")
 		if err != nil {
 			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
@@ -107,7 +107,7 @@ func TestStoreAccountErrors(t *testing.T) {
 		if _, err := store.db.Exec(`DROP TABLE accounts`); err != nil {
 			t.Fatalf("drop accounts: %v", err)
 		}
-		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("query error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -115,7 +115,7 @@ func TestStoreAccountErrors(t *testing.T) {
 	t.Run("invalid name", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		if _, err := store.GetOrCreateAccount("food2", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, models.InvalidAccount) {
+		if _, err := store.GetOrCreateAccount(t.Context(), "food2", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, models.InvalidAccount) {
 			t.Errorf("validation error = %v, want models.InvalidAccount", err)
 		}
 	})
@@ -128,7 +128,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			VALUES ('not-a-uuid', 'food', 'EXPENSE', ?, 'HKD')`, userID.String()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("bad account_id error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -141,7 +141,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			VALUES (?, 'income', 'INCOME', ?, 'HKD', 'not-a-time')`, uuid.New().String(), userID.String()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.GetOrCreateAccount("income", models.IncomeAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount(t.Context(), "income", models.IncomeAccount, userID, "HKD"); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("bad created_at error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -153,7 +153,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			BEGIN SELECT RAISE(ABORT, 'blocked'); END;`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorInsert) {
+		if _, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD"); !errors.Is(err, ErrorInsert) {
 			t.Errorf("insert error = %v, want ErrorInsert", err)
 		}
 	})
@@ -161,7 +161,7 @@ func TestStoreAccountErrors(t *testing.T) {
 	t.Run("one asset per user", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		if _, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID, "HKD"); err != nil {
+		if _, err := store.GetOrCreateAccount(t.Context(), "wallet", models.AssetAccount, userID, "HKD"); err != nil {
 			t.Fatalf("create wallet account: %v", err)
 		}
 
@@ -190,11 +190,11 @@ func countRows(t *testing.T, store *ExpenseStore, table string) int {
 func testAccounts(t *testing.T, store *ExpenseStore, userID uuid.UUID) (models.Account, models.Account) {
 	t.Helper()
 
-	asset, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID, "HKD")
+	asset, err := store.GetOrCreateAccount(t.Context(), "wallet", models.AssetAccount, userID, "HKD")
 	if err != nil {
 		t.Fatal(err)
 	}
-	expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID, "HKD")
+	expense, err := store.GetOrCreateAccount(t.Context(), "food", models.ExpenseAccount, userID, "HKD")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 
 		afterCalled := false
-		err := store.InsertAllWith([]models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
+		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
 			afterCalled = true
 			var count int
 			if err := tx.Get(&count, `SELECT COUNT(*) FROM entries`); err != nil {
@@ -281,7 +281,7 @@ func TestInsertAllWith(t *testing.T) {
 			testEntryPair(t, second.TransactionID, asset.AccountID, expense.AccountID)...,
 		)
 
-		err := store.InsertAllWith([]models.Transaction{first, second}, entries, nil)
+		err := store.InsertAllWith(t.Context(), []models.Transaction{first, second}, entries, nil)
 		if !errors.Is(err, ErrorInsert) {
 			t.Fatalf("error = %v, want ErrorInsert", err)
 		}
@@ -307,7 +307,7 @@ func TestInsertAllWith(t *testing.T) {
 				store, userID := newTestStore(t)
 				txn := testTransaction(userID)
 
-				err := store.InsertAllWith([]models.Transaction{txn}, tc.entries, nil)
+				err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, tc.entries, nil)
 				if !errors.Is(err, ErrorEntryCountMismatch) {
 					t.Fatalf("error = %v, want ErrorEntryCountMismatch", err)
 				}
@@ -325,7 +325,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 		entries[0].Currency = "USD"
 
-		err := store.InsertAllWith([]models.Transaction{txn}, entries, nil)
+		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil)
 		if !errors.Is(err, ErrorCurrencyMismatch) {
 			t.Fatalf("error = %v, want ErrorCurrencyMismatch", err)
 		}
@@ -344,7 +344,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 		entries[1].Direction = models.SourceDirection
 
-		err := store.InsertAllWith([]models.Transaction{txn}, entries, nil)
+		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil)
 		if !errors.Is(err, ErrorInsert) {
 			t.Fatalf("error = %v, want ErrorInsert", err)
 		}
@@ -363,7 +363,7 @@ func TestInsertAllWith(t *testing.T) {
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
 		afterErr := errors.New("balance check failed")
 
-		err := store.InsertAllWith([]models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
+		err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, func(tx *sqlx.Tx) error {
 			return afterErr
 		})
 		if !errors.Is(err, afterErr) {
@@ -396,12 +396,12 @@ func TestEntryIterators(t *testing.T) {
 	asset, expense := testAccounts(t, store, userID)
 	txn := testTransaction(userID)
 	entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
-	if err := store.InsertAllWith([]models.Transaction{txn}, entries, nil); err != nil {
+	if err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
 		t.Fatal(err)
 	}
 
 	t.Run("by account", func(t *testing.T) {
-		got := collectEntries(t, store.AllEntriesByAccount(asset))
+		got := collectEntries(t, store.AllEntriesByAccount(t.Context(), asset))
 		if len(got) != 1 {
 			t.Fatalf("entries = %d, want 1", len(got))
 		}
@@ -416,25 +416,25 @@ func TestEntryIterators(t *testing.T) {
 	})
 
 	t.Run("by transaction", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntriesByTransaction(txn, "HKD")); len(got) != 2 {
+		if got := collectEntries(t, store.AllEntriesByTransaction(t.Context(), txn, "HKD")); len(got) != 2 {
 			t.Errorf("entries = %d, want 2", len(got))
 		}
 	})
 
 	t.Run("by user", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntries(userID, "HKD")); len(got) != 2 {
+		if got := collectEntries(t, store.AllEntries(t.Context(), userID, "HKD")); len(got) != 2 {
 			t.Errorf("entries = %d, want 2", len(got))
 		}
 	})
 
 	t.Run("other user", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntries(uuid.New(), "HKD")); len(got) != 0 {
+		if got := collectEntries(t, store.AllEntries(t.Context(), uuid.New(), "HKD")); len(got) != 0 {
 			t.Errorf("entries = %d, want 0", len(got))
 		}
 	})
 
 	t.Run("other currency", func(t *testing.T) {
-		if got := collectEntries(t, store.AllEntries(userID, "USD")); len(got) != 0 {
+		if got := collectEntries(t, store.AllEntries(t.Context(), userID, "USD")); len(got) != 0 {
 			t.Errorf("entries = %d, want 0", len(got))
 		}
 	})
@@ -446,11 +446,11 @@ func TestZeroSum(t *testing.T) {
 		asset, expense := testAccounts(t, store, userID)
 		txn := testTransaction(userID)
 		entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
-		if err := store.InsertAllWith([]models.Transaction{txn}, entries, nil); err != nil {
+		if err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
 			t.Fatal(err)
 		}
 
-		balance, err := store.ZeroSum(userID, "HKD")
+		balance, err := store.ZeroSum(t.Context(), userID, "HKD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -471,11 +471,11 @@ func TestZeroSum(t *testing.T) {
 		}
 		entries[1].Amount = amount
 
-		if err := store.InsertAllWith([]models.Transaction{txn}, entries, nil); err != nil {
+		if err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
 			t.Fatal(err)
 		}
 
-		balance, err := store.ZeroSum(userID, "HKD")
+		balance, err := store.ZeroSum(t.Context(), userID, "HKD")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,7 +494,7 @@ func TestAllAccounts(t *testing.T) {
 	asset, expense := testAccounts(t, store, userID)
 
 	accounts := make(map[uuid.UUID]models.Account)
-	for account, err := range store.AllAccounts(userID, "HKD") {
+	for account, err := range store.AllAccounts(t.Context(), userID, "HKD") {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +511,7 @@ func TestAllAccounts(t *testing.T) {
 	}
 
 	var other int
-	for _, err := range store.AllAccounts(userID, "USD") {
+	for _, err := range store.AllAccounts(t.Context(), userID, "USD") {
 		if err != nil {
 			t.Fatal(err)
 		}

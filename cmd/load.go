@@ -1,39 +1,67 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+
+	"github.com/influx6/expense-tracker/internal/parser"
+	"github.com/influx6/expense-tracker/internal/store"
+	"github.com/influx6/expense-tracker/internal/wallet"
 )
 
-// loadCmd represents the load command
 var loadCmd = &cobra.Command{
 	Use:   "load",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Load transactions from a CSV file",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		file, err := cmd.Flags().GetString("file")
+		if err != nil {
+			return err
+		}
+		invalid, err := cmd.Flags().GetString("invalid")
+		if err != nil {
+			return err
+		}
+		dbPath, err := cmd.Flags().GetString("db")
+		if err != nil {
+			return err
+		}
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("load called")
+		ctx := cmd.Context()
+		expenseStore, err := store.SqliteExpenseStore(ctx, dbPath, 5000)
+		if err != nil {
+			return err
+		}
+
+		result, err := parser.ParseCSVFile(file, invalid, 2, []string{wallet.RESERVED_WALLET_ACCOUNT})
+		if err != nil {
+			return err
+		}
+
+		expenseWallet, err := wallet.NewWallet(ctx, expenseStore, defaultCurrency, defaultUserID)
+		if err != nil {
+			return err
+		}
+
+		if err := expenseWallet.Apply(ctx, result.ValidEvents); err != nil {
+			return err
+		}
+
+		out := cmd.OutOrStdout()
+		fmt.Fprintf(out, "loaded: %d\n", len(result.ValidEvents))
+		fmt.Fprintf(out, "skipped: %d\n", len(result.BadRows))
+		if len(result.BadRows) > 0 {
+			fmt.Fprintf(out, "invalid rows written to: %s\n", invalid)
+		}
+		return nil
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(loadCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// loadCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// loadCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	loadCmd.Flags().StringP("file", "f", "", "CSV file to load")
+	_ = loadCmd.MarkFlagRequired("file")
+	loadCmd.Flags().String("invalid", "invalid.csv", "file to write rejected rows into")
+	loadCmd.Flags().String("db", "expense-tracker.db", "SQLite database path")
 }

@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -22,8 +23,8 @@ func (t ZeroSumBalance) Name() string {
 	return "zerosum"
 }
 
-func (t ZeroSumBalance) Analyse(wl *wallet.Wallet) (any, error) {
-	total, err := wl.ExpenseStore.ZeroSum(wl.UserId, wl.Currency)
+func (t ZeroSumBalance) Analyse(ctx context.Context, wl *wallet.Wallet) (any, error) {
+	total, err := wl.ExpenseStore.ZeroSum(ctx, wl.UserId, wl.Currency)
 	if err != nil {
 		return nil, err
 	}

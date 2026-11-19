@@ -1,6 +1,7 @@
 package wallet
 
 import (
+	"context"
 	"fmt"
 	"time"
 	"uuid"
@@ -70,8 +71,9 @@ type Wallet struct {
 	ExpenseStore *store.ExpenseStore
 }
 
-func NewWallet(es *store.ExpenseStore, currency string, userId uuid.UUID) (*Wallet, error) {
+func NewWallet(ctx context.Context, es *store.ExpenseStore, currency string, userId uuid.UUID) (*Wallet, error) {
 	assetAccount, getAccountErr := es.GetOrCreateAccount(
+		ctx,
 		RESERVED_WALLET_ACCOUNT,
 		models.AssetAccount,
 		userId,
@@ -84,12 +86,12 @@ func NewWallet(es *store.ExpenseStore, currency string, userId uuid.UUID) (*Wall
 	return &Wallet{UserId: userId, Currency: currency, AssetAccount: &assetAccount, ExpenseStore: es}, nil
 }
 
-func (w *Wallet) Apply(events []models.TransactionEvent) error {
+func (w *Wallet) Apply(ctx context.Context, events []models.TransactionEvent) error {
 	transactions := make([]models.Transaction, 0, len(events))
 	entries := make([]models.Entry, 0, len(events)*2)
 
 	for _, event := range events {
-		change, err := w.transactionEventToWalletRecord(event)
+		change, err := w.transactionEventToWalletRecord(ctx, event)
 		if err != nil {
 			return err
 		}
@@ -110,8 +112,8 @@ func (w *Wallet) Apply(events []models.TransactionEvent) error {
 		entries = append(entries, transactionEntries...)
 	}
 
-	return w.ExpenseStore.InsertAllWith(transactions, entries, func(tx *sqlx.Tx) error {
-		balance, err := w.ExpenseStore.SumEntryBalance(tx, w.UserId, w.Currency)
+	return w.ExpenseStore.InsertAllWith(ctx, transactions, entries, func(tx *sqlx.Tx) error {
+		balance, err := w.ExpenseStore.SumEntryBalance(ctx, tx, w.UserId, w.Currency)
 		if err != nil {
 			return err
 		}
@@ -167,7 +169,7 @@ func (t *walletChangeRequest) intoEntries() ([]models.Entry, error) {
 
 // transactionEventToWalletRecord normalizes every incoming transaction event
 // producing the right set of transaction request that is to be recorded.
-func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (walletChangeRequest, error) {
+func (w *Wallet) transactionEventToWalletRecord(ctx context.Context, event models.TransactionEvent) (walletChangeRequest, error) {
 	changeRequest := walletChangeRequest{
 		Desc:          event.Desc,
 		UserId:        w.UserId,
@@ -178,7 +180,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 
 	switch event.Type {
 	case models.EventExpense:
-		destAccount, destAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.ExpenseAccount, w.UserId, w.Currency)
+		destAccount, destAccountErr := w.ExpenseStore.GetOrCreateAccount(ctx, string(event.Category), models.ExpenseAccount, w.UserId, w.Currency)
 		if destAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(destAccountErr)
 		}
@@ -187,7 +189,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 		changeRequest.DestAccount = destAccount
 		return changeRequest, nil
 	case models.EventIncome:
-		incomeAccount, incomeAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.IncomeAccount, w.UserId, w.Currency)
+		incomeAccount, incomeAccountErr := w.ExpenseStore.GetOrCreateAccount(ctx, string(event.Category), models.IncomeAccount, w.UserId, w.Currency)
 		if incomeAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(incomeAccountErr)
 		}
@@ -198,7 +200,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 	case models.EventTransferIn:
 		// transfers in increases assets but they are liabilities as well
 		// that will need to be settled, but they do increase asset value.
-		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.UserId, w.Currency)
+		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(ctx, string(event.Category), models.LiabilityAccount, w.UserId, w.Currency)
 		if liabilityAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
@@ -208,7 +210,7 @@ func (w *Wallet) transactionEventToWalletRecord(event models.TransactionEvent) (
 		return changeRequest, nil
 	case models.EventTransferOut:
 		// transfers out decreases asset value but also decreases your libability.
-		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(string(event.Category), models.LiabilityAccount, w.UserId, w.Currency)
+		liabilityAccount, liabilityAccountErr := w.ExpenseStore.GetOrCreateAccount(ctx, string(event.Category), models.LiabilityAccount, w.UserId, w.Currency)
 		if liabilityAccountErr != nil {
 			return walletChangeRequest{}, ErrorAccountError.withErr(liabilityAccountErr)
 		}
