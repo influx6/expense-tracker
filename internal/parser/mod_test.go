@@ -2,6 +2,7 @@ package parser_test
 
 import (
 	"encoding/csv"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/influx6/expense-tracker/internal/models"
 	"github.com/influx6/expense-tracker/internal/parser"
 )
 
@@ -69,7 +71,7 @@ func TestParseMapValid(t *testing.T) {
 		wantWhen string
 		wantAmt  string
 		wantCat  string
-		wantType parser.EventType
+		wantType models.EventType
 		wantDesc string
 	}{
 		{
@@ -77,7 +79,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -86,7 +88,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventIncome,
+			wantType: models.EventIncome,
 			wantDesc: "sample",
 		},
 		{
@@ -95,7 +97,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventTransferIn,
+			wantType: models.EventTransferIn,
 			wantDesc: "sample",
 		},
 		{
@@ -104,7 +106,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventTransferOut,
+			wantType: models.EventTransferOut,
 			wantDesc: "sample",
 		},
 		{
@@ -113,7 +115,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -122,7 +124,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T00:00:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -131,7 +133,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food_delivery",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -140,7 +142,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "150.25",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "hello there",
 		},
 		{
@@ -149,7 +151,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "15.05",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -158,7 +160,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "15.05",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -169,7 +171,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "1",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 		{
@@ -178,7 +180,7 @@ func TestParseMapValid(t *testing.T) {
 			wantWhen: "2026-01-15T10:30:00Z",
 			wantAmt:  "15.05",
 			wantCat:  "food",
-			wantType: parser.EventExpense,
+			wantType: models.EventExpense,
 			wantDesc: "sample",
 		},
 	}
@@ -332,7 +334,7 @@ func TestParseCSVFileValid(t *testing.T) {
 	}
 
 	first := result.ValidEvents[0]
-	if first.Desc != "coffee, large" || first.Category != "food" || first.Type != parser.EventExpense {
+	if first.Desc != "coffee, large" || first.Category != "food" || first.Type != models.EventExpense {
 		t.Errorf("first event = %+v", first)
 	}
 	if first.Amount.String() != "10.5" {
@@ -558,5 +560,123 @@ func TestWriteInvalidCSVError(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "missing-dir", "invalid.csv")
 	if err := parser.WriteInvalidCSV(path, canonicalHeader(), nil); err == nil {
 		t.Fatal("WriteInvalidCSV accepted an unwritable path")
+	}
+}
+
+func TestParserErrors(t *testing.T) {
+	parseMapError := func(mutate func(map[string]string)) error {
+		fields := validFields()
+		mutate(fields)
+		_, err := parser.ParseMap(fields)
+		return err
+	}
+
+	tests := []struct {
+		name string
+		run  func() error
+		want error
+	}{
+		{
+			name: "missing timestamp",
+			run:  func() error { return parseMapError(func(f map[string]string) { delete(f, "when") }) },
+			want: parser.ErrorMissingTimestamp,
+		},
+		{
+			name: "invalid timestamp",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["when"] = "nope" }) },
+			want: parser.ErrorInvalidTimestamp,
+		},
+		{
+			name: "missing amount",
+			run:  func() error { return parseMapError(func(f map[string]string) { delete(f, "amount") }) },
+			want: parser.ErrorMissingAmount,
+		},
+		{
+			name: "invalid amount",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["amount"] = "abc" }) },
+			want: parser.ErrorInvalidAmount,
+		},
+		{
+			name: "too many decimals",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["amount"] = "15.055" }) },
+			want: parser.ErrorTooManyDecimals,
+		},
+		{
+			name: "amount too large",
+			run: func() error {
+				return parseMapError(func(f map[string]string) { f["amount"] = "123456789012345678.99" })
+			},
+			want: parser.ErrorAmountTooLarge,
+		},
+		{
+			name: "non-positive amount",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["amount"] = "-5" }) },
+			want: parser.ErrorNonPositiveAmount,
+		},
+		{
+			name: "missing category",
+			run:  func() error { return parseMapError(func(f map[string]string) { delete(f, "category") }) },
+			want: parser.ErrorMissingCategory,
+		},
+		{
+			name: "invalid category",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["category"] = "food2" }) },
+			want: parser.ErrorInvalidCategory,
+		},
+		{
+			name: "reserved category",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["category"] = "wallet" }) },
+			want: parser.ErrorReservedCategory,
+		},
+		{
+			name: "invalid type",
+			run:  func() error { return parseMapError(func(f map[string]string) { f["type"] = "credit" }) },
+			want: parser.ErrorInvalidType,
+		},
+		{
+			name: "invalid header",
+			run: func() error {
+				path, err := writeCSVFile(t.TempDir(), "bad-header.csv",
+					[]string{"when", "amount", "desc", "category"}, nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = parser.ParseCSVFile(path, "")
+				return err
+			},
+			want: parser.ErrorInvalidHeader,
+		},
+		{
+			name: "missing csv file",
+			run: func() error {
+				_, err := parser.ParseCSVFile(filepath.Join(t.TempDir(), "missing.csv"), "")
+				return err
+			},
+			want: parser.ErrorOpenCSV,
+		},
+		{
+			name: "unwritable invalid csv",
+			run: func() error {
+				return parser.WriteInvalidCSV(filepath.Join(t.TempDir(), "missing-dir", "invalid.csv"),
+					canonicalHeader(), nil)
+			},
+			want: parser.ErrorWriteInvalidCSV,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := tc.run()
+			if err == nil {
+				t.Fatalf("expected %v, got nil", tc.want)
+			}
+			if !errors.Is(err, tc.want) {
+				t.Errorf("errors.Is(error, %v) = false; error = %v", tc.want, err)
+			}
+			var parserErr parser.ParserError
+			if !errors.As(err, &parserErr) {
+				t.Errorf("error type = %T, want parser.ParserError", err)
+			}
+		})
 	}
 }
