@@ -14,6 +14,8 @@ import (
 	"github.com/influx6/expense-tracker/internal/parser"
 )
 
+var reservedCategories = []string{"wallet"}
+
 func canonicalHeader() []string {
 	return []string{"when", "amount", "desc", "category", "type"}
 }
@@ -192,7 +194,7 @@ func TestParseMapValid(t *testing.T) {
 				tc.mutate(fields)
 			}
 
-			ev, err := parser.ParseMap(fields)
+			ev, err := parser.ParseMap(fields, 2, reservedCategories)
 			if err != nil {
 				t.Fatalf("ParseMap: %v", err)
 			}
@@ -301,7 +303,7 @@ func TestParseMapInvalid(t *testing.T) {
 			fields := validFields()
 			tc.mutate(fields)
 
-			if ev, err := parser.ParseMap(fields); err == nil {
+			if ev, err := parser.ParseMap(fields, 2, reservedCategories); err == nil {
 				t.Fatalf("ParseMap accepted invalid fields as %+v", ev)
 			} else if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Errorf("error = %q, want it to contain %q", err, tc.wantErr)
@@ -322,7 +324,7 @@ func TestParseCSVFileValid(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := parser.ParseCSVFile(path, "")
+	result, err := parser.ParseCSVFile(path, "", 2, reservedCategories)
 	if err != nil {
 		t.Fatalf("ParseCSVFile: %v", err)
 	}
@@ -364,7 +366,7 @@ func TestParseCSVFileBadRows(t *testing.T) {
 	}
 	invalidPath := filepath.Join(dir, "invalid.csv")
 
-	result, err := parser.ParseCSVFile(path, invalidPath)
+	result, err := parser.ParseCSVFile(path, invalidPath, 2, reservedCategories)
 	if err != nil {
 		t.Fatalf("ParseCSVFile: %v", err)
 	}
@@ -456,7 +458,7 @@ func TestParseCSVFileHeader(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			result, err := parser.ParseCSVFile(path, "")
+			result, err := parser.ParseCSVFile(path, "", 2, reservedCategories)
 			if tc.wantErr != "" {
 				if err == nil {
 					t.Fatalf("ParseCSVFile accepted header %v", tc.header)
@@ -481,7 +483,7 @@ func TestParseCSVFileHeader(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		result, err := parser.ParseCSVFile(path, "")
+		result, err := parser.ParseCSVFile(path, "", 2, reservedCategories)
 		if err != nil {
 			t.Fatalf("ParseCSVFile: %v", err)
 		}
@@ -492,7 +494,7 @@ func TestParseCSVFileHeader(t *testing.T) {
 }
 
 func TestParseCSVFileMissingFile(t *testing.T) {
-	_, err := parser.ParseCSVFile(filepath.Join(t.TempDir(), "missing.csv"), "")
+	_, err := parser.ParseCSVFile(filepath.Join(t.TempDir(), "missing.csv"), "", 2, reservedCategories)
 	if err == nil {
 		t.Fatal("ParseCSVFile accepted a missing file")
 	}
@@ -510,7 +512,7 @@ func TestParseCSVFileInvalidOutputPath(t *testing.T) {
 	}
 
 	// A directory cannot be used as the invalid output file.
-	var _, parseErr = parser.ParseCSVFile(path, dir)
+	var _, parseErr = parser.ParseCSVFile(path, dir, 2, reservedCategories)
 	if parseErr == nil {
 		t.Fatal("ParseCSVFile accepted a directory as invalid output path")
 	}
@@ -567,7 +569,7 @@ func TestParserErrors(t *testing.T) {
 	parseMapError := func(mutate func(map[string]string)) error {
 		fields := validFields()
 		mutate(fields)
-		_, err := parser.ParseMap(fields)
+		_, err := parser.ParseMap(fields, 2, reservedCategories)
 		return err
 	}
 
@@ -641,7 +643,7 @@ func TestParserErrors(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = parser.ParseCSVFile(path, "")
+				_, err = parser.ParseCSVFile(path, "", 2, reservedCategories)
 				return err
 			},
 			want: parser.ErrorInvalidHeader,
@@ -649,7 +651,7 @@ func TestParserErrors(t *testing.T) {
 		{
 			name: "missing csv file",
 			run: func() error {
-				_, err := parser.ParseCSVFile(filepath.Join(t.TempDir(), "missing.csv"), "")
+				_, err := parser.ParseCSVFile(filepath.Join(t.TempDir(), "missing.csv"), "", 2, reservedCategories)
 				return err
 			},
 			want: parser.ErrorOpenCSV,
@@ -676,6 +678,68 @@ func TestParserErrors(t *testing.T) {
 			var parserErr parser.ParserError
 			if !errors.As(err, &parserErr) {
 				t.Errorf("error type = %T, want parser.ParserError", err)
+			}
+		})
+	}
+}
+
+func TestParseMapCurrencyDecimalPlaces(t *testing.T) {
+	tests := []struct {
+		name    string
+		places  uint
+		amount  string
+		wantErr bool
+	}{
+		{name: "zero places accepts an integer", places: 0, amount: "100"},
+		{name: "zero places rejects decimals", places: 0, amount: "15.05", wantErr: true},
+		{name: "one place accepts one decimal", places: 1, amount: "15.5"},
+		{name: "one place rejects two decimals", places: 1, amount: "15.05", wantErr: true},
+		{name: "two places accepts HKD", places: 2, amount: "15.05"},
+		{name: "two places rejects three decimals", places: 2, amount: "15.055", wantErr: true},
+		{name: "three places accepts three decimals", places: 3, amount: "15.055"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := validFields()
+			fields["amount"] = tc.amount
+
+			_, err := parser.ParseMap(fields, tc.places, reservedCategories)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.wantErr && !errors.Is(err, parser.ErrorTooManyDecimals) {
+				t.Errorf("error = %v, want parser.ErrorTooManyDecimals", err)
+			}
+		})
+	}
+}
+
+func TestParseMapReservedCategories(t *testing.T) {
+	tests := []struct {
+		name     string
+		reserved []string
+		category string
+		wantErr  bool
+	}{
+		{name: "nothing reserved", category: "wallet"},
+		{name: "wallet is reserved", reserved: []string{"wallet"}, category: "wallet", wantErr: true},
+		{name: "reserved entry is case insensitive", reserved: []string{"Wallet"}, category: "wallet", wantErr: true},
+		{name: "custom reserved name", reserved: []string{"salary"}, category: "salary", wantErr: true},
+		{name: "only the given names are reserved", reserved: []string{"salary"}, category: "wallet"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fields := validFields()
+			fields["category"] = tc.category
+
+			_, err := parser.ParseMap(fields, 2, tc.reserved)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if tc.wantErr && !errors.Is(err, parser.ErrorReservedCategory) {
+				t.Errorf("error = %v, want parser.ErrorReservedCategory", err)
 			}
 		})
 	}

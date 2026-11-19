@@ -102,13 +102,15 @@ type BatchResult struct {
 
 // ParseMap validates a single record passed as a map[string]string (e.g. from `cli record` flags).
 // Expected keys: "when", "amount", "desc", "category", "type".
-func ParseMap(fields map[string]string) (models.TransactionEvent, error) {
+func ParseMap(fields map[string]string, currencyDecimalPlaces uint, reservedCategories []string) (models.TransactionEvent, error) {
 	return validateAndBuildEvent(
 		fields["when"],
 		fields["amount"],
 		fields["desc"],
 		fields["category"],
 		fields["type"],
+		currencyDecimalPlaces,
+		reservedCategories,
 	)
 }
 
@@ -118,7 +120,7 @@ var (
 
 // ParseCSVFile reads a CSV file with columns `when,amount,desc,category,type`,
 // separates valid TransactionEvents from invalid rows, and writes bad rows to invalidOutPath.
-func ParseCSVFile(csvPath string, invalidOutPath string) (BatchResult, error) {
+func ParseCSVFile(csvPath string, invalidOutPath string, currencyDecimalPlaces uint, reservedCategories []string) (BatchResult, error) {
 	var result BatchResult
 
 	f, err := os.Open(csvPath)
@@ -161,6 +163,8 @@ func ParseCSVFile(csvPath string, invalidOutPath string) (BatchResult, error) {
 			record[colIndex["desc"]],
 			record[colIndex["category"]],
 			record[colIndex["type"]],
+			currencyDecimalPlaces,
+			reservedCategories,
 		)
 		if err != nil {
 			result.BadRows = append(result.BadRows, BadRow{
@@ -182,7 +186,7 @@ func ParseCSVFile(csvPath string, invalidOutPath string) (BatchResult, error) {
 	return result, nil
 }
 
-func validateAndBuildEvent(rawWhen, rawAmount, rawDesc, rawCategory, rawType string) (models.TransactionEvent, error) {
+func validateAndBuildEvent(rawWhen, rawAmount, rawDesc, rawCategory, rawType string, currencyDecimalPlaces uint, reservedCategories []string) (models.TransactionEvent, error) {
 	var ev models.TransactionEvent
 
 	// 1. Validate UTC Timestamp
@@ -191,14 +195,14 @@ func validateAndBuildEvent(rawWhen, rawAmount, rawDesc, rawCategory, rawType str
 		return ev, err
 	}
 
-	// 2. Validate Decimal Amount (> 0, max 2 decimal places for HKD)
-	amount, err := parseAmount(rawAmount, 2)
+	// 2. Validate Decimal Amount (> 0, within the currency's decimal places)
+	amount, err := parseAmount(rawAmount, currencyDecimalPlaces)
 	if err != nil {
 		return ev, err
 	}
 
 	// 3. Normalize & Validate Category (lowercase, spaces -> _, letters + _ only)
-	category, err := normalizeCategory(rawCategory)
+	category, err := normalizeCategory(rawCategory, reservedCategories)
 	if err != nil {
 		return ev, err
 	}
@@ -302,7 +306,7 @@ func normalizeAmount(intDigits, fraction string) string {
 	return intDigits + "." + fraction
 }
 
-func normalizeCategory(raw string) (string, error) {
+func normalizeCategory(raw string, reservedCategories []string) (string, error) {
 	clean := strings.ToLower(strings.TrimSpace(raw))
 	clean = strings.ReplaceAll(clean, " ", "_")
 	if clean == "" {
@@ -311,7 +315,9 @@ func normalizeCategory(raw string) (string, error) {
 	if !models.AccountNamePattern.MatchString(clean) {
 		return "", ErrorInvalidCategory.withErr(fmt.Errorf("%q", raw))
 	}
-	if clean == "wallet" {
+	if slices.ContainsFunc(reservedCategories, func(reserved string) bool {
+		return strings.ToLower(strings.TrimSpace(reserved)) == clean
+	}) {
 		return "", ErrorReservedCategory.withErr(fmt.Errorf("%q", clean))
 	}
 	return clean, nil
