@@ -4,9 +4,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"iter"
 	"time"
 	"uuid"
 
+	"github.com/govalues/decimal"
 	"github.com/jmoiron/sqlx"
 	_ "modernc.org/sqlite"
 
@@ -200,6 +202,165 @@ type accountRow struct {
 	CreatedAt   string `db:"created_at"`
 }
 
+func (r accountRow) toAccount(userID uuid.UUID) (models.Account, error) {
+	accountID, err := uuid.Parse(r.AccountID)
+	if err != nil {
+		return models.Account{}, ErrorQueryFailed.withErr(err)
+	}
+	category, err := models.ToAccountCategory(r.AccountName)
+	if err != nil {
+		return models.Account{}, ErrorQueryFailed.withErr(err)
+	}
+	createdAt, err := time.Parse(time.RFC3339, r.CreatedAt)
+	if err != nil {
+		return models.Account{}, ErrorQueryFailed.withErr(err)
+	}
+
+	return models.Account{
+		AccountID:       accountID,
+		AccountCategory: category,
+		AccountType:     models.AccountType(r.AccountType),
+		UserID:          userID,
+		Currency:        r.Currency,
+		CreatedAt:       createdAt,
+	}, nil
+}
+
+func (es *ExpenseStore) AllAccounts(userID uuid.UUID) iter.Seq2[models.Account, error] {
+	return func(yield func(models.Account, error) bool) {
+		rows, err := es.db.Queryx(`
+			SELECT account_id, account_name, account_type, currency, created_at
+			FROM accounts
+			WHERE user_id = ?`, userID.String())
+		if err != nil {
+			yield(models.Account{}, ErrorQueryFailed.withErr(err))
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var row accountRow
+			if err := rows.StructScan(&row); err != nil {
+				yield(models.Account{}, ErrorQueryFailed.withErr(err))
+				return
+			}
+			account, err := row.toAccount(userID)
+			if err != nil {
+				yield(models.Account{}, err)
+				return
+			}
+			if !yield(account, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(models.Account{}, ErrorQueryFailed.withErr(err))
+		}
+	}
+}
+
+type entryRow struct {
+	EntryID       string `db:"entry_id"`
+	Amount        string `db:"amount"`
+	TransactionID string `db:"transaction_id"`
+	AccountID     string `db:"account_id"`
+	Direction     string `db:"direction"`
+	CreatedAt     string `db:"created_at"`
+}
+
+func (r entryRow) toEntry() (models.Entry, error) {
+	entryID, err := uuid.Parse(r.EntryID)
+	if err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
+	transactionID, err := uuid.Parse(r.TransactionID)
+	if err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
+	accountID, err := uuid.Parse(r.AccountID)
+	if err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
+	amount, err := decimal.Parse(r.Amount)
+	if err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
+	createdAt, err := time.Parse(time.RFC3339, r.CreatedAt)
+	if err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
+
+	entry := models.Entry{
+		EntryID:       entryID,
+		TransactionID: transactionID,
+		AccountID:     accountID,
+		Amount:        amount,
+		Direction:     models.Direction(r.Direction),
+		CreatedAt:     createdAt,
+	}
+	if err := entry.Validate(); err != nil {
+		return models.Entry{}, ErrorQueryFailed.withErr(err)
+	}
+	return entry, nil
+}
+
+func (es *ExpenseStore) entriesSeq(query string, args ...any) iter.Seq2[models.Entry, error] {
+	return func(yield func(models.Entry, error) bool) {
+		rows, err := es.db.Queryx(query, args...)
+		if err != nil {
+			yield(models.Entry{}, ErrorQueryFailed.withErr(err))
+			return
+		}
+		defer rows.Close()
+
+		for rows.Next() {
+			var row entryRow
+			if err := rows.StructScan(&row); err != nil {
+				yield(models.Entry{}, ErrorQueryFailed.withErr(err))
+				return
+			}
+			entry, err := row.toEntry()
+			if err != nil {
+				yield(models.Entry{}, err)
+				return
+			}
+			if !yield(entry, nil) {
+				return
+			}
+		}
+		if err := rows.Err(); err != nil {
+			yield(models.Entry{}, ErrorQueryFailed.withErr(err))
+		}
+	}
+}
+
+const entryColumns = `e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction, e.created_at`
+
+func (es *ExpenseStore) AllEntriesByAccount(account models.Account) iter.Seq2[models.Entry, error] {
+	return es.entriesSeq(`
+		SELECT `+entryColumns+`
+		FROM entries e
+		WHERE e.account_id = ?
+		ORDER BY e.created_at, e.entry_id`, account.AccountID.String())
+}
+
+func (es *ExpenseStore) AllEntriesByTransaction(transaction models.Transaction) iter.Seq2[models.Entry, error] {
+	return es.entriesSeq(`
+		SELECT `+entryColumns+`
+		FROM entries e
+		WHERE e.transaction_id = ?
+		ORDER BY e.created_at, e.entry_id`, transaction.TransactionID.String())
+}
+
+func (es *ExpenseStore) AllEntries(userID uuid.UUID) iter.Seq2[models.Entry, error] {
+	return es.entriesSeq(`
+		SELECT `+entryColumns+`
+		FROM entries e
+		JOIN transactions t ON t.transaction_id = e.transaction_id
+		WHERE t.user_id = ?
+		ORDER BY e.created_at, e.entry_id`, userID.String())
+}
+
 func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
 	var row accountRow
 
@@ -215,27 +376,7 @@ func (es *ExpenseStore) FindAccount(category models.AccountCategory, accountType
 		return models.Account{}, ErrorQueryFailed.withErr(err)
 	}
 
-	accountID, err := uuid.Parse(row.AccountID)
-	if err != nil {
-		return models.Account{}, ErrorQueryFailed.withErr(err)
-	}
-	accountCategory, err := models.ToAccountCategory(row.AccountName)
-	if err != nil {
-		return models.Account{}, ErrorQueryFailed.withErr(err)
-	}
-	createdAt, err := time.Parse(time.RFC3339, row.CreatedAt)
-	if err != nil {
-		return models.Account{}, ErrorQueryFailed.withErr(err)
-	}
-
-	return models.Account{
-		AccountID:       accountID,
-		AccountCategory: accountCategory,
-		AccountType:     models.AccountType(row.AccountType),
-		UserID:          userID,
-		Currency:        row.Currency,
-		CreatedAt:       createdAt,
-	}, nil
+	return row.toAccount(userID)
 }
 
 func (es *ExpenseStore) InsertAllWith(transactions []models.Transaction, entries []models.Entry, after func(tx *sqlx.Tx) error) error {

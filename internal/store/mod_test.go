@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"iter"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -352,6 +353,62 @@ func TestInsertAllWith(t *testing.T) {
 		}
 		if got := countRows(t, store, "entries"); got != 0 {
 			t.Errorf("entries = %d, want 0", got)
+		}
+	})
+}
+
+func collectEntries(t *testing.T, seq iter.Seq2[models.Entry, error]) map[uuid.UUID]models.Entry {
+	t.Helper()
+
+	entries := make(map[uuid.UUID]models.Entry)
+	for entry, err := range seq {
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[entry.EntryID] = entry
+	}
+	return entries
+}
+
+func TestEntryIterators(t *testing.T) {
+	store, userID := newTestStore(t)
+	asset, expense := testAccounts(t, store, userID)
+	txn := testTransaction(userID)
+	entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+	if err := store.InsertAllWith([]models.Transaction{txn}, entries, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("by account", func(t *testing.T) {
+		got := collectEntries(t, store.AllEntriesByAccount(asset))
+		if len(got) != 1 {
+			t.Fatalf("entries = %d, want 1", len(got))
+		}
+
+		entry, ok := got[entries[0].EntryID]
+		if !ok {
+			t.Fatalf("entry %v was not yielded", entries[0].EntryID)
+		}
+		if entry.Direction != models.SourceDirection || entry.AccountID != asset.AccountID {
+			t.Errorf("entry = %+v", entry)
+		}
+	})
+
+	t.Run("by transaction", func(t *testing.T) {
+		if got := collectEntries(t, store.AllEntriesByTransaction(txn)); len(got) != 2 {
+			t.Errorf("entries = %d, want 2", len(got))
+		}
+	})
+
+	t.Run("by user", func(t *testing.T) {
+		if got := collectEntries(t, store.AllEntries(userID)); len(got) != 2 {
+			t.Errorf("entries = %d, want 2", len(got))
+		}
+	})
+
+	t.Run("other user", func(t *testing.T) {
+		if got := collectEntries(t, store.AllEntries(uuid.New())); len(got) != 0 {
+			t.Errorf("entries = %d, want 0", len(got))
 		}
 	})
 }
