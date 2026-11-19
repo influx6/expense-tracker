@@ -147,7 +147,7 @@ func (es *ExpenseStore) createSchema() error {
 
 const defaultCurrency = "HKD"
 
-func (es *ExpenseStore) getOrCreateAccount(accountName string, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
+func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType models.AccountType, userID uuid.UUID) (models.Account, error) {
 	accountName = strings.ToLower(accountName)
 
 	found, err := es.findAccount(accountName, accountType, userID)

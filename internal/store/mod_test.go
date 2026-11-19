@@ -25,9 +25,9 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("creates an account", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		account, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		account, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
 		if account.AccountType != models.ExpenseAccount || account.Currency != "HKD" || account.UserID != userID {
 			t.Errorf("account = %+v", account)
@@ -40,13 +40,13 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("returns the existing account", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		first, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		first, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		second, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		second, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
 		if first.AccountID != second.AccountID {
 			t.Errorf("second call created a new account: %v != %v", first.AccountID, second.AccountID)
@@ -64,13 +64,13 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("creates a separate account per type", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		expense, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		expense, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		income, err := store.getOrCreateAccount("food", models.IncomeAccount, userID)
+		income, err := store.GetOrCreateAccount("food", models.IncomeAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
 		if expense.AccountID == income.AccountID {
 			t.Errorf("different account types share an account ID")
@@ -80,13 +80,13 @@ func TestGetOrCreateAccount(t *testing.T) {
 	t.Run("matches names regardless of case", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		lower, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID)
+		lower, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
-		mixed, err := store.getOrCreateAccount("Food", models.ExpenseAccount, userID)
+		mixed, err := store.GetOrCreateAccount("Food", models.ExpenseAccount, userID)
 		if err != nil {
-			t.Fatalf("getOrCreateAccount: %v", err)
+			t.Fatalf("GetOrCreateAccount: %v", err)
 		}
 		if lower.AccountID != mixed.AccountID {
 			t.Errorf("name case created a new account: %v != %v", lower.AccountID, mixed.AccountID)
@@ -101,7 +101,7 @@ func TestStoreAccountErrors(t *testing.T) {
 		if _, err := store.db.Exec(`DROP TABLE accounts`); err != nil {
 			t.Fatalf("drop accounts: %v", err)
 		}
-		if _, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("query error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -109,7 +109,7 @@ func TestStoreAccountErrors(t *testing.T) {
 	t.Run("invalid name", func(t *testing.T) {
 		store, userID := newTestStore(t)
 
-		if _, err := store.getOrCreateAccount("food2", models.ExpenseAccount, userID); !errors.Is(err, models.InvalidAccount) {
+		if _, err := store.GetOrCreateAccount("food2", models.ExpenseAccount, userID); !errors.Is(err, models.InvalidAccount) {
 			t.Errorf("validation error = %v, want models.InvalidAccount", err)
 		}
 	})
@@ -122,7 +122,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			VALUES ('not-a-uuid', 'food', 'EXPENSE', ?, 'HKD')`, userID.String()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("bad account_id error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -135,7 +135,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			VALUES (?, 'income', 'INCOME', ?, 'HKD', 'not-a-time')`, uuid.New().String(), userID.String()); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.getOrCreateAccount("income", models.IncomeAccount, userID); !errors.Is(err, ErrorQueryFailed) {
+		if _, err := store.GetOrCreateAccount("income", models.IncomeAccount, userID); !errors.Is(err, ErrorQueryFailed) {
 			t.Errorf("bad created_at error = %v, want ErrorQueryFailed", err)
 		}
 	})
@@ -147,7 +147,7 @@ func TestStoreAccountErrors(t *testing.T) {
 			BEGIN SELECT RAISE(ABORT, 'blocked'); END;`); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.getOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorInsert) {
+		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorInsert) {
 			t.Errorf("insert error = %v, want ErrorInsert", err)
 		}
 	})
