@@ -137,6 +137,8 @@ func (es *ExpenseStore) createSchema() error {
 		CREATE INDEX IF NOT EXISTS transaction__occured_at_index ON transactions(occured_at);
 		CREATE INDEX IF NOT EXISTS transaction__user_id_index ON transactions(user_id);
 		CREATE INDEX IF NOT EXISTS accounts__user_id_index ON accounts(user_id);
+		CREATE UNIQUE INDEX IF NOT EXISTS accounts__one_asset_per_user
+			ON accounts(user_id) WHERE account_type = 'ASSET';
 	`); err != nil {
 		return ErrorSchemaInit.withErr(err)
 	}
@@ -170,10 +172,11 @@ func (es *ExpenseStore) GetOrCreateAccount(accountName string, accountType model
 		return models.Account{}, err
 	}
 
-	// INSERT OR IGNORE covers a concurrent insert that hits both unique key and other violations (learnt something new).
+	// Ignore only a concurrent insert with the same unique key.
 	if _, err := es.db.Exec(`
-		INSERT OR IGNORE INTO accounts (account_id, account_name, account_type, user_id, currency)
-		VALUES (?, ?, ?, ?, ?)`,
+		INSERT INTO accounts (account_id, account_name, account_type, user_id, currency)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (user_id, account_name, account_type) DO NOTHING`,
 		account.AccountID.String(),
 		string(account.AccountCategory),
 		string(account.AccountType),

@@ -3,6 +3,7 @@ package store
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"uuid"
 
@@ -149,6 +150,24 @@ func TestStoreAccountErrors(t *testing.T) {
 		}
 		if _, err := store.GetOrCreateAccount("food", models.ExpenseAccount, userID); !errors.Is(err, ErrorInsert) {
 			t.Errorf("insert error = %v, want ErrorInsert", err)
+		}
+	})
+
+	t.Run("one asset per user", func(t *testing.T) {
+		store, userID := newTestStore(t)
+
+		if _, err := store.GetOrCreateAccount("wallet", models.AssetAccount, userID); err != nil {
+			t.Fatalf("create wallet account: %v", err)
+		}
+
+		_, err := store.db.Exec(`
+			INSERT INTO accounts (account_id, account_name, account_type, user_id, currency)
+			VALUES (?, 'savings', 'ASSET', ?, 'HKD')`, uuid.New().String(), userID.String())
+		if err == nil {
+			t.Fatal("a second ASSET account was accepted")
+		}
+		if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			t.Errorf("error = %v, want a UNIQUE constraint failure", err)
 		}
 	})
 }
