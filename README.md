@@ -48,11 +48,13 @@ tracking
 I used AI where it made sense selectively, such as:
 
 - Writing tests for established code and edgecases
-- Speeding through guided implementation steps
+- Speeding through guided implementation steps after hand coding
 
 ## Important
 
-1. The tests are kept as simple as possible, and I selected to use AI to generate these, its more labour that actual work since the core is the code and more so AI has its uses in writing tests to validate behaviour after the underlying rules, invariants and specification for the expected behaviour is specified.
+1. The tests are kept as simple as possible, and I selected to use AI to generate these, its more labour that actual work since the core is the plan first then the code.
+
+2. Assets is singular, we do not differentiate different types of assets, cash or savings, everything is one asset account. So you cant borrow yourself from your savings.
 
 ## Assumptions
 
@@ -149,8 +151,8 @@ It is reasonable to make one adjustment: An addition to the asset could could in
 
 Instead such types of liability are represented as two new type of event (not `expense`):
 
-- `transfer_in`: movement of value from some other entity defined by said category to us (positive cash or value but its not really an income), even though it increases our [Wallets] value
-- `transfer_out`: movement of value from us back to another entity, which means a reduction of our liability and a transfer out from the [Wallet, Account(ASSET)] balance.
+- `transfer_in`: movement of value from another entity (defined by the category) to us. It increases the [Wallet] but is not income: it is value we must return, such as a loan. Earned or non-repayable value — salary, bank interest, gifts, payments — is `income`, not `transfer_in`.
+- `transfer_out`: movement of value from us to another entity. It reduces a liability we owe, or lends value that we are owed back (a receivable).
 
 This allows us represent liability and their increase or reduction without overloading type=expense.
 
@@ -165,7 +167,10 @@ This allows us represent liability and their increase or reduction without overl
 - [Assumption]: All liability are just considered a form of value transfer in either direction.
 - [Law]: A liability under `transfer_in` adds value to the Account(account_type=ASSET)
 - [Law]: A liability under `transfer_out` removes value to the Account(account_type=ASSET)
-- [Law]: Summation of all entries under `account_type=LIABILITY` tells us the current owned liability for a giving user as well as the net effect those have on the account(account_type=ASSET) balance.
+- [Law]: `transfer_in` records the LIABILITY account as `SOURCE` and the Account(account_type=ASSET) as `DESTINATION`.
+- [Law]: `transfer_out` records the LIABILITY account as `DESTINATION` and the Account(account_type=ASSET) as `SOURCE`.
+- [Derived]: An account balance is `sum(DESTINATION amounts) - sum(SOURCE amounts)`. For a LIABILITY account, a balance below zero means we owe; above zero means we are owed (for example money lent out, or value held in an asset bucket such as `savings_account`).
+- [Law]: Summation of all entries under `account_type=LIABILITY` tells us the net liability for a giving user as well as the net effect those have on the account(account_type=ASSET) balance.
 
 ### [Story]: Load my income (inflows) and expenses (outflows)
 
@@ -230,7 +235,7 @@ An entry is 1 to 1 connected to a single `transaction` (see [Model:Transaction])
 
 #### Laws
 
-- The `entry.amount` is never negative, the `entry.direction` determines that sign
+- The `entry.amount` is never negative. The amount is always recorded positive; `entry.direction` determines its effect: `SOURCE` reduces the account, `DESTINATION` increases it.
 - The `entry.amount` can never be different from either side of the `direction`, they are locked into place (source.entry.amount == destination.entry.amount)
 - Every entry has a `direction` which is either `SOURCE` or `DESTINATION`
 - There are only ever two entries per transaction, any `count(entries) != 2` is a bug
