@@ -661,3 +661,87 @@ func TestInsertAllWithIdempotent(t *testing.T) {
 		t.Errorf("entries = %d after reprocess, want 2", got)
 	}
 }
+
+func TestGetTransaction(t *testing.T) {
+	store, userID := newTestStore(t)
+	asset, expense := testAccounts(t, store, userID)
+	txn := testTransaction(userID)
+	entries := testEntryPair(t, txn.TransactionID, asset.AccountID, expense.AccountID)
+	if _, err := store.InsertAllWith(t.Context(), []models.Transaction{txn}, entries, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("joins entries with accounts", func(t *testing.T) {
+		got, err := store.GetTransaction(t.Context(), txn.TransactionID, userID, "HKD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 2 {
+			t.Fatalf("entries = %d, want 2", len(got))
+		}
+
+		byDirection := make(map[models.Direction]EntryWithAccount, len(got))
+		for _, entry := range got {
+			byDirection[entry.Entry.Direction] = entry
+
+			if entry.Entry.TransactionID != txn.TransactionID {
+				t.Errorf("transaction id = %v, want %v", entry.Entry.TransactionID, txn.TransactionID)
+			}
+			if entry.Entry.Amount.String() != "10.00" {
+				t.Errorf("amount = %s, want 10.00", entry.Entry.Amount)
+			}
+			if entry.Entry.Currency != "HKD" || entry.Account.Currency != "HKD" {
+				t.Errorf("currencies = %q and %q, want HKD", entry.Entry.Currency, entry.Account.Currency)
+			}
+			if entry.Account.UserID != userID {
+				t.Errorf("account user = %v, want %v", entry.Account.UserID, userID)
+			}
+			if entry.Entry.OccuredAt.Format(time.RFC3339) != txn.OccuredAt.UTC().Format(time.RFC3339) {
+				t.Errorf("occured at = %v, want %v", entry.Entry.OccuredAt, txn.OccuredAt)
+			}
+			if entry.Account.CreatedAt.IsZero() {
+				t.Errorf("account has no created_at")
+			}
+		}
+
+		source := byDirection[models.SourceDirection]
+		if source.Account.AccountID != asset.AccountID || source.Account.AccountType != models.AssetAccount {
+			t.Errorf("source account = %+v, want asset wallet", source.Account)
+		}
+
+		destination := byDirection[models.DestinationDirection]
+		if destination.Account.AccountID != expense.AccountID || destination.Account.AccountType != models.ExpenseAccount {
+			t.Errorf("destination account = %+v, want expense account", destination.Account)
+		}
+	})
+
+	t.Run("unknown transaction", func(t *testing.T) {
+		got, err := store.GetTransaction(t.Context(), uuid.New(), userID, "HKD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Errorf("entries = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("other user", func(t *testing.T) {
+		got, err := store.GetTransaction(t.Context(), txn.TransactionID, uuid.New(), "HKD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Errorf("entries = %d, want 0", len(got))
+		}
+	})
+
+	t.Run("other currency", func(t *testing.T) {
+		got, err := store.GetTransaction(t.Context(), txn.TransactionID, userID, "USD")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 0 {
+			t.Errorf("entries = %d, want 0", len(got))
+		}
+	})
+}

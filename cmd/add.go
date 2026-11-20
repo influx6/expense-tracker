@@ -2,9 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/influx6/expense-tracker/internal/humans"
 	"github.com/influx6/expense-tracker/internal/models"
 	"github.com/influx6/expense-tracker/internal/parser"
 	"github.com/influx6/expense-tracker/internal/store"
@@ -56,7 +58,21 @@ var addCmd = &cobra.Command{
 			fmt.Fprintln(out, "already recorded")
 			return nil
 		}
-		fmt.Fprintf(out, "entries: %d\n", result.Entries)
+
+		fmt.Fprintf(out, "created: %s\n", event.OccuredAt.UTC().Format(time.RFC3339))
+		fmt.Fprintln(out, "entries:")
+
+		entries, err := expenseStore.GetTransaction(ctx, event.ID, defaultUserID, defaultCurrency)
+		if err != nil {
+			return err
+		}
+		for _, entryWithAccount := range entries {
+			fmt.Fprintf(out, "  Entry [%s] when=%s amount=%s\n",
+				humans.Category(entryWithAccount.Account.AccountCategory),
+				entryWithAccount.Entry.OccuredAt.UTC().Format(time.RFC3339),
+				humans.Amount(entryWithAccount.Entry.Amount),
+			)
+		}
 		return nil
 	},
 }

@@ -418,6 +418,81 @@ func (es *ExpenseStore) AllEntries(ctx context.Context, userID uuid.UUID, curren
 		ORDER BY e.created_at, e.entry_id`, userID.String(), currency)
 }
 
+type EntryWithAccount struct {
+	Entry   models.Entry
+	Account models.Account
+}
+
+type entryWithAccountRow struct {
+	EntryID          string `db:"entry_id"`
+	Amount           string `db:"amount"`
+	TransactionID    string `db:"transaction_id"`
+	AccountID        string `db:"account_id"`
+	Direction        string `db:"direction"`
+	EntryCreatedAt   string `db:"entry_created_at"`
+	OccuredAt        string `db:"occured_at"`
+	Currency         string `db:"currency"`
+	AccountName      string `db:"account_name"`
+	AccountType      string `db:"account_type"`
+	AccountCreatedAt string `db:"account_created_at"`
+}
+
+func (es *ExpenseStore) GetTransaction(ctx context.Context, transactionID uuid.UUID, userID uuid.UUID, currency string) ([]EntryWithAccount, error) {
+	rows, err := es.db.QueryxContext(ctx, `
+		SELECT e.entry_id, e.amount, e.transaction_id, e.account_id, e.direction,
+		       e.created_at AS entry_created_at, t.occured_at, a.currency,
+		       a.account_name, a.account_type, a.created_at AS account_created_at
+		FROM entries e
+		JOIN accounts a ON a.account_id = e.account_id
+		JOIN transactions t ON t.transaction_id = e.transaction_id
+		WHERE e.transaction_id = ? AND t.user_id = ? AND a.currency = ?
+		ORDER BY e.created_at, e.entry_id`,
+		transactionID.String(), userID.String(), currency)
+	if err != nil {
+		return nil, ErrorQueryFailed.withErr(err)
+	}
+	defer rows.Close()
+
+	var entries []EntryWithAccount
+	for rows.Next() {
+		var row entryWithAccountRow
+		if err := rows.StructScan(&row); err != nil {
+			return nil, ErrorQueryFailed.withErr(err)
+		}
+
+		entry, err := entryRow{
+			EntryID:       row.EntryID,
+			Amount:        row.Amount,
+			TransactionID: row.TransactionID,
+			AccountID:     row.AccountID,
+			Direction:     row.Direction,
+			Currency:      row.Currency,
+			OccuredAt:     row.OccuredAt,
+			CreatedAt:     row.EntryCreatedAt,
+		}.toEntry()
+		if err != nil {
+			return nil, err
+		}
+
+		account, err := accountRow{
+			AccountID:   row.AccountID,
+			AccountName: row.AccountName,
+			AccountType: row.AccountType,
+			Currency:    row.Currency,
+			CreatedAt:   row.AccountCreatedAt,
+		}.toAccount(userID)
+		if err != nil {
+			return nil, err
+		}
+
+		entries = append(entries, EntryWithAccount{Entry: entry, Account: account})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, ErrorQueryFailed.withErr(err)
+	}
+	return entries, nil
+}
+
 func (es *ExpenseStore) SumEntryBalance(ctx context.Context, queryer sqlx.QueryerContext, userID uuid.UUID, currency string) (decimal.Decimal, error) {
 	rows, err := queryer.QueryxContext(ctx, `
 		SELECT e.direction, e.amount

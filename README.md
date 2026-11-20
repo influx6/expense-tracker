@@ -129,8 +129,11 @@ expense-tracker add \
 ```
 
 ```
-id: 5c1f4a2e-...
-entries: 2
+id: 1140631e-23ad-5204-8251-ee47aa5a1fb6
+created: 2026-01-15T00:00:00Z
+entries:
+  Entry [wallet] when=2026-01-15T00:00:00Z amount=42.50
+  Entry [food] when=2026-01-15T00:00:00Z amount=42.50
 ```
 
 Running the same entry again prints `already recorded`. The id is derived from `when`, `amount`, `category`, and `type`, so changing only `--desc` does not create a duplicate.
