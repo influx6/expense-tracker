@@ -1,0 +1,36 @@
+when,amount,desc,category,type
+2023-01-01,25000.00,salary,salary,income
+2023-01-10,20000.00,car loan,car_loan,transfer_in
+2023-02-05,8000.00,monthly rent,rent,expense
+2023-03-15,3000.00,borrowed from friend,friend,transfer_in
+2023-05-10,320.50,groceries,food,expense
+2023-06-20,1000.00,car loan repayment,car_loan,transfer_out
+2023-07-01,25000.00,salary,salary,income
+2023-08-05,8000.00,monthly rent,rent,expense
+2023-09-10,2000.00,family loan,family,transfer_in
+2024-01-01,26000.00,salary,salary,income
+2024-02-05,8500.00,monthly rent,rent,expense
+2024-02-10,5000.00,credit card draw,credit_card,transfer_in
+2024-05-12,410.00,groceries,food,expense
+2024-07-01,26000.00,salary,salary,income
+2024-07-05,30000.00,renovation loan,renovation_loan,transfer_in
+2024-08-05,8500.00,monthly rent,rent,expense
+2024-08-10,2000.00,friend loan,friend,transfer_in
+2024-11-20,2000.00,renovation repayment,renovation_loan,transfer_out
+2025-01-01,27000.00,salary,salary,income
+2025-02-05,9000.00,monthly rent,rent,expense
+2025-03-12,8000.00,credit card draw,credit_card,transfer_in
+2025-05-08,12000.00,family loan,family,transfer_in
+2025-06-18,1500.00,friend loan,friend,transfer_in
+2025-07-01,27000.00,salary,salary,income
+2025-08-05,9000.00,monthly rent,rent,expense
+2025-09-03,275.75,groceries,food,expense
+2025-10-10,1000.00,family repayment,family,transfer_out
+2026-01-01,28000.00,salary,salary,income
+2026-02-05,9500.00,monthly rent,rent,expense
+2026-02-14,15000.00,bank loan,bank,transfer_in
+2026-03-21,398.20,groceries,food,expense
+2026-04-20,4000.00,friend loan,friend,transfer_in
+2026-07-01,28000.00,salary,salary,income
+2026-08-01,500.00,bank repayment,bank,transfer_out
+2026-08-05,9500.00,monthly rent,rent,expense
