@@ -52,27 +52,43 @@ func (s *WalletSummary) Print(out io.Writer) {
 	fmt.Fprintf(out, "Currency: %s\n\n", s.Currency)
 
 	fmt.Fprintln(out, "Totals:")
-	fmt.Fprintf(out, "  %-12s %20s %20s %20s\n", "Type", "Debits (RECEIVED)", "Credits (SENT)", "Balance")
+	fmt.Fprintf(out, "  %-12s %16s %-13s %16s %-13s %16s\n", "Type", "Debits", "", "Credits", "", "Balance")
 	for _, total := range s.Totals {
-		fmt.Fprintf(out, "  %-12s %20s %20s %20s\n",
+		debitNote, creditNote := liabilityNotes(total.AccountType)
+		fmt.Fprintf(out, "  %-12s %16s %-13s %16s %-13s %16s\n",
 			humans.AccountType(total.AccountType),
-			humans.Amount(total.Debits),
-			humans.Amount(total.Credits),
-			humans.Amount(total.Balance),
+			humans.Amount(total.Debits), debitNote,
+			humans.Amount(total.Credits), creditNote,
+			displayBalance(total.AccountType, total.Balance),
 		)
 	}
 
 	fmt.Fprintln(out, "\nCategories:")
-	fmt.Fprintf(out, "  %-12s %-18s %20s %20s %20s\n", "Type", "Category", "Debits (RECEIVED)", "Credits (SENT)", "Balance")
+	fmt.Fprintf(out, "  %-12s %-18s %16s %-13s %16s %-13s %16s\n", "Type", "Category", "Debits", "", "Credits", "", "Balance")
 	for _, category := range s.Categories {
-		fmt.Fprintf(out, "  %-12s %-18s %20s %20s %20s\n",
+		debitNote, creditNote := liabilityNotes(category.Account.AccountType)
+		fmt.Fprintf(out, "  %-12s %-18s %16s %-13s %16s %-13s %16s\n",
 			humans.AccountType(category.Account.AccountType),
 			humans.Category(category.Account.AccountCategory),
-			humans.Amount(category.Debits),
-			humans.Amount(category.Credits),
-			humans.Amount(category.Balance),
+			humans.Amount(category.Debits), debitNote,
+			humans.Amount(category.Credits), creditNote,
+			displayBalance(category.Account.AccountType, category.Balance),
 		)
 	}
+}
+
+func liabilityNotes(accountType models.AccountType) (string, string) {
+	if accountType == models.LiabilityAccount {
+		return "(Paid Back)", "(Borrowed)"
+	}
+	return "", ""
+}
+
+func displayBalance(accountType models.AccountType, balance decimal.Decimal) string {
+	if accountType == models.LiabilityAccount || accountType == models.IncomeAccount {
+		balance = balance.Neg()
+	}
+	return humans.Amount(balance)
 }
 
 var _ wallet.ServiceRule[wallet.PrintOutput] = WalletSummaryRule{}

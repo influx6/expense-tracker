@@ -134,19 +134,19 @@ expense-tracker summarize --year 2026 --month 1
 Currency: HKD
 
 Totals:
-  Type            Debits (RECEIVED)       Credits (SENT)              Balance
-  Asset                   64,527.15            54,267.85            10,259.30
-  Liability                3,500.00             9,500.00            -6,000.00
-  Income                       0.00            55,027.15           -55,027.15
-  Expense                 50,767.85                 0.00            50,767.85
+  Type                   Debits                        Credits                        Balance
+  Asset               64,527.15                      54,267.85                      10,259.30
+  Liability            3,500.00 (Paid Back)           9,500.00 (Borrowed)            6,000.00
+  Income                   0.00                      55,027.15                      55,027.15
+  Expense             50,767.85                           0.00                      50,767.85
 
 Categories:
-  Type         Category              Debits (RECEIVED)       Credits (SENT)              Balance
-  Liability    bank                           1,000.00             3,000.00            -2,000.00
+  Type         Category                     Debits                        Credits                        Balance
+  Liability    bank                       1,000.00 (Paid Back)           3,000.00 (Borrowed)            2,000.00
   ...
 ```
 
-`--month` requires `--year`.
+`--month` requires `--year`. Income and liability balances are shown in their natural direction (earned/owed); the underlying debit-positive ledger still sums to zero.
 
 ### Rules
 
