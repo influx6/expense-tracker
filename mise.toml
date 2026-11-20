@@ -1,0 +1,26 @@
+[tools]
+go = "1.27.4"
+
+[tasks.setup]
+description = "Download Go modules"
+run = "go mod download"
+
+[tasks.build]
+description = "Build the CLI"
+run = "go build ./..."
+
+[tasks.test]
+description = "Run all tests"
+run = "go test ./..."
+
+[tasks.fmt]
+description = "Format Go sources"
+run = "gofmt -w ."
+
+[tasks.vet]
+description = "Run go vet"
+run = "go vet ./..."
+
+[tasks.run]
+description = "Run the CLI"
+run = "go run ."

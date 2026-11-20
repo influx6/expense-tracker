@@ -5,6 +5,8 @@
 - [Personal Finance Tracker](#personal-finance-tracker)
   - [AI Disclaimer](#ai-disclaimer)
   - [Important Decisions](#important-decisions)
+  - [Requirements](#requirements)
+  - [Setup](#setup)
   - [CLI Commands](#cli-commands)
     - [Add](#add)
     - [Load](#load)
@@ -68,6 +70,46 @@ I used AI where it made sense selectively, such as:
 1. Sqlite is used as our record of storage, just, zero support for decimal without the [Decimal.c](https://www.sqlite.org/floatingpoint.html) extension, which I kept out to keep it basi.
 
 1. A csv file is made idempotent as much as is possible, attempting to load the same file without any big material change to rows should have same net effect and zero additional records, changing `description` will never have any net effect.
+
+## Requirements
+
+- macOS or Linux
+- Go 1.27.4 (installed by mise)
+- [mise](https://mise.jdx.dev/) for tool and task management
+
+The SQLite driver is [`modernc.org/sqlite`](https://pkg.go.dev/modernc.org/sqlite), which is pure Go. No system SQLite library, CGO, or C toolchain is required to build or run the CLI. The `sqlite3` CLI is optional, only useful for inspecting the database manually.
+
+## Setup
+
+Install mise:
+
+```bash
+# macOS
+brew install mise
+
+# Linux
+curl https://mise.run | sh
+```
+
+Install Go and download the module dependencies:
+
+```bash
+mise install
+mise run setup
+```
+
+Project tasks:
+
+| Task | Description |
+|---|---|
+| `mise run setup` | Download Go modules |
+| `mise run build` | Build the CLI |
+| `mise run test` | Run all tests |
+| `mise run fmt` | Format Go sources |
+| `mise run vet` | Run `go vet` |
+| `mise run run` | Run the CLI |
+
+Without mise, install Go 1.27.4 manually and run `go mod download`.
 
 ## CLI Commands
 
