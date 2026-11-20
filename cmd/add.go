@@ -67,8 +67,14 @@ var addCmd = &cobra.Command{
 			return err
 		}
 		for _, entryWithAccount := range entries {
-			fmt.Fprintf(out, "  Entry [%s] when=%s amount=%s\n",
+			side := "CREDIT"
+			if entryWithAccount.Entry.Direction == models.DestinationDirection {
+				side = "DEBIT"
+			}
+
+			fmt.Fprintf(out, "  Entry [%s] %s when=%s amount=%s\n",
 				humans.Category(entryWithAccount.Account.AccountCategory),
+				side,
 				entryWithAccount.Entry.OccuredAt.UTC().Format(time.RFC3339),
 				humans.Amount(entryWithAccount.Entry.Amount),
 			)
